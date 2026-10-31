@@ -1,0 +1,13 @@
+{
+  "name": "Dui Social POS",
+  "short_name": "Dui POS",
+  "lang": "vi",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
