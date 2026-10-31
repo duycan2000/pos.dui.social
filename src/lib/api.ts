@@ -42,7 +42,7 @@ export const del = <T = any>(p: string) => api<T>('DELETE', p);
 export async function uploadPhoto(file: File): Promise<string> {
   const blob = await shrink(file, 1280, 0.82);
   const res = await fetch('/api/media', { method: 'POST', headers: { authorization: 'Bearer ' + deviceToken, 'content-type': blob.type }, body: blob });
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as { key?: string; error?: string };
   if (!res.ok) throw new ApiError(res.status, data.error || 'Tải ảnh thất bại');
   return data.key as string;
 }
