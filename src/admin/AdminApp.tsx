@@ -1,10 +1,11 @@
-// S24 — back office home + router. Works on the phone and in a laptop browser. Needs network.
+// S24 — back office: Shopify-style sidebar on laptop, grouped list on phone. Needs network.
 import { useEffect } from 'react';
 import { setStaffSession } from '../lib/api';
 import { getManagerSession, isManager, navigate, useStore } from '../lib/store';
 import { runSync } from '../lib/sync';
-import { TopBar } from '../ui';
+import { Icon, TopBar } from '../ui';
 import Audit from './Audit';
+import BankTxns from './BankTxns';
 import Costing from './Costing';
 import { Dashboard, Ledger } from './Finance';
 import { IngredientEdit, Inventory, PurchaseNew, Purchases, ShoppingList, StocktakeNew, Stocktakes } from './Inventory';
@@ -16,21 +17,31 @@ import Reports from './Reports';
 import { Devices, Settings } from './Settings';
 import Staff from './Staff';
 
-const TILES: [string, string, string, ('owner' | 'manager')[]][] = [
-  ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', ['owner', 'manager']],
-  ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, bản mocktail, thêm shot', ['owner', 'manager']],
-  ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1', ['owner']],
-  ['admin/inventory', 'Kho', 'Tồn kho, cảnh báo sắp hết', ['owner', 'manager']],
-  ['admin/purchase', 'Nhập hàng', 'Phiếu nhập, ảnh hoá đơn', ['owner', 'manager']],
-  ['admin/stocktake', 'Kiểm kê', 'Đếm chai, hao hụt', ['owner', 'manager']],
-  ['admin/costing', 'Giá vốn', 'Cost %, lãi thật sau BOGO', ['owner', 'manager']],
-  ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ', ['owner', 'manager']],
-  ['admin/ledger', 'Sổ thu chi', 'Lương, mặt bằng, điện nước…', ['owner', 'manager']],
-  ['admin/reports', 'Báo cáo thuế', 'Tháng / quý / năm, xuất Excel', ['owner', 'manager']],
-  ['admin/staff', 'Nhân viên', 'PIN, vai trò, hạn mức', ['owner']],
-  ['admin/audit', 'Nhật ký', 'Huỷ đơn, đổi giá, thu chi', ['owner', 'manager']],
-  ['admin/settings', 'Cài đặt', 'VietQR, giờ cut-off, thuế', ['owner']],
-  ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', ['owner']],
+type Role = 'owner' | 'manager';
+const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, roles: Role[]][] }[] = [
+  { group: 'Bán hàng', items: [
+    ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', 'tag', ['owner', 'manager']],
+    ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', ['owner', 'manager']],
+    ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', ['owner']],
+  ] },
+  { group: 'Kho', items: [
+    ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', ['owner', 'manager']],
+    ['admin/purchase', 'Nhập hàng', 'Phiếu nhập, ảnh hoá đơn', 'receipt', ['owner', 'manager']],
+    ['admin/stocktake', 'Kiểm kê', 'Đếm chai, hao hụt', 'list', ['owner', 'manager']],
+    ['admin/costing', 'Giá vốn', 'Cost %, lãi thật sau BOGO', 'chart', ['owner', 'manager']],
+  ] },
+  { group: 'Tài chính', items: [
+    ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ, tip', 'chart', ['owner', 'manager']],
+    ['admin/ledger', 'Sổ thu chi', 'Lương, mặt bằng, điện nước', 'wallet', ['owner', 'manager']],
+    ['admin/bank', 'Giao dịch ngân hàng', 'Chuyển khoản tự xác nhận', 'bank', ['owner', 'manager']],
+    ['admin/reports', 'Báo cáo thuế', 'Tháng / quý / năm, Excel', 'receipt', ['owner', 'manager']],
+  ] },
+  { group: 'Hệ thống', items: [
+    ['admin/staff', 'Nhân viên', 'PIN, vai trò, hạn mức', 'users', ['owner']],
+    ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', 'phone', ['owner']],
+    ['admin/settings', 'Cài đặt', 'VietQR, webhook, cut-off, thuế', 'settings', ['owner']],
+    ['admin/audit', 'Nhật ký', 'Huỷ, mời, đổi giá, thu chi', 'clock', ['owner', 'manager']],
+  ] },
 ];
 
 export default function AdminApp({ route }: { route: string }) {
@@ -42,26 +53,49 @@ export default function AdminApp({ route }: { route: string }) {
     if (session) setStaffSession(session);
     else if (online) getManagerSession('Quản trị cần nhập lại PIN').then((r) => { if (!r) navigate('order'); });
   }, [session, online]); // eslint-disable-line
-  // Back in the till, pull fresh menu/config.
-  useEffect(() => () => { runSync(); }, []);
+  useEffect(() => () => { runSync(); }, []); // back in the till: pull fresh menu/config
 
   if (!isManager(staff)) return null;
   if (!online && !session) {
-    return (
-      <div className="screen"><TopBar title="Quản trị" onBack={() => navigate('order')} />
-        <div className="pad"><div className="banner danger">Quản trị cần có mạng.</div></div></div>
-    );
+    return <div className="screen"><TopBar title="Quản trị" onBack={() => navigate('order')} /><div className="pad"><div className="banner danger">Quản trị cần có mạng.</div></div></div>;
   }
-  if (!session) return <div className="screen center row muted">Đang đăng nhập quản trị…</div>;
+  if (!session) return <div className="screen center row muted"><span className="spinner" />&nbsp; Đang đăng nhập quản trị…</div>;
 
+  const role = staff.role as Role;
   const [, page, id] = route.split('/');
+  const current = 'admin/' + (page ?? '');
+  return (
+    <div className="admin">
+      <aside className="admin-side" aria-label="Quản trị">
+        <button className="navitem" onClick={() => navigate('order')}><Icon name="back" />Về màn bán hàng</button>
+        {NAV.map((g) => {
+          const items = g.items.filter((i) => i[4].includes(role));
+          if (!items.length) return null;
+          return (
+            <div key={g.group} className="col" style={{ gap: 2 }}>
+              <div className="group">{g.group}</div>
+              {items.map(([r, title, , icon]) => (
+                <button key={r} className={'navitem' + (current.startsWith(r) || (r === 'admin/inventory' && /admin\/(ingredient|purchases|shopping|stocktakes)/.test(current)) ? ' on' : '')} onClick={() => navigate(r)}>
+                  <Icon name={icon} size={20} />{title}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </aside>
+      <div className="admin-main">{renderPage(page, id, role)}</div>
+    </div>
+  );
+}
+
+function renderPage(page: string | undefined, id: string | undefined, role: Role) {
   switch (page) {
     case 'menu': return <Menu />;
-    case 'item': return <ItemEdit id={id} />;
+    case 'item': return <ItemEdit id={id ?? ''} />;
     case 'modifiers': return <Modifiers />;
     case 'promotions': return <Promotions />;
     case 'inventory': return <Inventory />;
-    case 'ingredient': return <IngredientEdit id={id} />;
+    case 'ingredient': return <IngredientEdit id={id ?? ''} />;
     case 'purchase': return <PurchaseNew />;
     case 'purchases': return <Purchases />;
     case 'shopping': return <ShoppingList />;
@@ -70,22 +104,43 @@ export default function AdminApp({ route }: { route: string }) {
     case 'costing': return <Costing />;
     case 'finance': return <Dashboard />;
     case 'ledger': return <Ledger />;
+    case 'bank': return <BankTxns />;
     case 'reports': return <Reports />;
     case 'staff': return <Staff />;
     case 'audit': return <Audit />;
     case 'settings': return <Settings />;
     case 'devices': return <Devices />;
   }
+  return <Home role={role} />;
+}
+
+function Home({ role }: { role: Role }) {
+  const staff = useStore((s) => s.staff)!;
   return (
-    <div className="screen wide">
-      <TopBar title="Quản trị" sub={staff.name} onBack={() => navigate('order')} />
-      <div className="scroll pad">
-        <div className="admin-nav">
-          {TILES.filter((t) => t[3].includes(staff.role as 'owner' | 'manager')).map(([r, title, sub]) => (
-            <button key={r} className="admin-tile" onClick={() => navigate(r)}><b>{title}</b><span className="small muted">{sub}</span></button>
-          ))}
+    <>
+      <TopBar title="Quản trị" sub={`${staff.name} · ${role === 'owner' ? 'Chủ quán' : 'Quản lý'}`} onBack={() => navigate('order')} />
+      <div className="content">
+        <div className="content-inner">
+          {NAV.map((g) => {
+            const items = g.items.filter((i) => i[4].includes(role));
+            if (!items.length) return null;
+            return (
+              <div key={g.group}>
+                <div className="section-title">{g.group}</div>
+                <div className="list">
+                  {items.map(([r, title, sub, icon]) => (
+                    <button key={r} className="li" onClick={() => navigate(r)}>
+                      <span className="iconbtn" style={{ background: 'var(--surface-2)', width: 40, height: 40 }}><Icon name={icon} size={20} /></span>
+                      <span className="grow col" style={{ gap: 2 }}><b>{title}</b><span className="small muted">{sub}</span></span>
+                      <span className="faint"><Icon name="chevron" size={18} /></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ class Stmt {
   args: unknown[] = [];
   constructor(private db: DatabaseSync, public sql: string) {}
   bind(...args: unknown[]) {
+    if (args.length > 100) throw new Error(`D1 limit: ${args.length} bound parameters (max 100)`);
     const s = new Stmt(this.db, this.sql);
     s.args = args.map((a) => (a === undefined ? null : typeof a === 'boolean' ? (a ? 1 : 0) : a));
     return s;

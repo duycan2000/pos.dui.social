@@ -1,6 +1,6 @@
 # Dui Social POS
 
-App bán hàng cho Dui Social, chạy trên Cloudflare Workers + D1 + R2. Một Worker phục vụ cả API lẫn app (PWA), bán được khi mất mạng và tự đồng bộ khi có mạng lại. Giao diện mẫu "Quầy đêm", tiếng Việt.
+App bán hàng cho Dui Social, chạy trên Cloudflare Workers + D1 + R2. Một Worker phục vụ cả API lẫn app (PWA), bán được khi mất mạng và tự đồng bộ khi có mạng lại. Giao diện tối "Quầy đêm" v2, tiếng Việt: trên điện thoại bán bằng lưới món + giỏ toàn màn hình; trên tablet/laptop giỏ luôn nằm bên phải (kiểu Square), back office có thanh điều hướng bên trái (kiểu Shopify).
 
 ## Cài đặt lần đầu
 
@@ -11,7 +11,7 @@ npm install
 npx wrangler login
 npx wrangler d1 create dui-pos            # chép database_id in ra vào wrangler.jsonc
 npx wrangler r2 bucket create dui-pos-media
-npm test                                   # 25 kiểm tra: BOGO, ngày kinh doanh, VietQR, API, kho, két
+npm test                                   # 32 kiểm tra: BOGO, tab, mời, tip, webhook, VietQR, kho, két
 npm run deploy                             # build + migrate D1 + deploy
 ```
 
@@ -38,6 +38,8 @@ npm run dev            # app ở :5173, gọi /api qua proxy
 | `worker/` | API: đồng bộ, đóng két + Z-report, quản trị, kho, giá vốn, tài chính, báo cáo |
 | `src/pos/` | Màn bán hàng S01–S23 |
 | `src/admin/` | Back office S24–S31 + kho, giá vốn, tài chính, báo cáo |
+| `src/lib/printer.ts` | In ESC/POS qua Web Bluetooth hoặc RawBT, render hoá đơn thành ảnh |
+| `worker/bank.ts` | Webhook SePay/Casso, tự khớp chuyển khoản |
 | `test/` | Kiểm tra end-to-end chạy bằng Node (`node:sqlite` thay cho D1) |
 
 ## Đã có (P1)
@@ -56,9 +58,34 @@ npm run dev            # app ở :5173, gọi /api qua proxy
 - **Tài chính**: tổng quan theo khoảng ngày có so kỳ trước, dòng tiền và lãi lỗ tách riêng, theo giờ, món bán chạy, sổ thu chi có chứng từ.
 - **Báo cáo thuế**: tháng/quý/năm, xuất CSV mở bằng Excel, danh sách đơn huỷ, lũy kế năm so với ngưỡng cấu hình. Không có tỷ lệ thuế nào viết cứng trong code.
 
-## Chưa làm (P2/P3)
+## Mới trong bản này
 
-In hoá đơn Bluetooth (sẽ bọc PWA bằng Capacitor), tab mở và chia bill, giảm giá thủ công, hoàn tiền một phần, webhook ngân hàng tự xác nhận chuyển khoản, bar display, chi phí định kỳ, menu engineering, khoá sổ tháng, tích hợp hoá đơn điện tử, nhiều outlet.
+- **Tab mở**: lưu đơn thành tab theo tên khách, gọi thêm nhiều lượt, thanh toán một lần. Tab dùng chung 2 máy; lượt gọi từ 2 máy được gộp trên server. Bỏ món đã gửi cần quản lý duyệt + lý do. Không đóng được két khi còn tab mở.
+- **Ly mời**: chạm vào món › "Mời ly này", chọn lý do, quản lý duyệt. Khách không trả, kho vẫn trừ, giá vốn vẫn tính; báo cáo riêng (Z-report, Tổng quan, Excel).
+- **Tip**: chọn tip % cho thẻ/chuyển khoản; tiền mặt có ô "Khách để lại tiền thối làm tip". Tip không tính vào doanh thu, tip tiền mặt được cộng vào tiền dự kiến của két; Tổng quan có tip theo nhân viên thu.
+- **Tự xác nhận chuyển khoản** (SePay hoặc Casso): xem mục bên dưới. Màn VietQR tự chuyển sang "Đã thanh toán" khi tiền vào đúng số tiền + nội dung; đơn "chờ CK" cũng tự khớp; chuyển dư thành tip. Trang Quản trị › Giao dịch ngân hàng để đối soát, khớp tay hoặc bỏ qua.
+- **Máy in Bluetooth**: menu ☰ › Máy in. Hai cách: Bluetooth trực tiếp từ Chrome (máy in BLE) hoặc qua app RawBT (máy in Bluetooth thường). In hoá đơn, phiếu tạm tính cho tab, phiếu pha chế cho quầy bar (chỉ món mới), mở két tiền; khổ 58/80mm; in dạng ảnh nên đúng dấu tiếng Việt.
+
+### Bật tự xác nhận chuyển khoản
+
+1. Cloudflare › Worker `dui-social-pos` › Settings › Variables and Secrets › thêm **Secret** `BANK_WEBHOOK_KEY` (chuỗi ngẫu nhiên dài).
+2. SePay: webhook URL `https://<worker>/api/webhooks/bank`, xác thực API Key = chuỗi trên (SePay gửi `Authorization: Apikey <key>`).
+   Casso: URL như trên, Security Key = chuỗi trên (hoặc thêm `?key=<chuỗi>` vào URL).
+3. Server chống trùng theo mã giao dịch, nên SePay/Casso gửi lại nhiều lần cũng không bị cộng 2 lần.
+
+### Dữ liệu demo
+
+Quản trị › Cài đặt › **Dữ liệu demo** › "Tạo dữ liệu demo": 17 món bar có công thức, nguyên liệu và nhập hàng, 2 nhân viên mẫu (Linh — quản lý, PIN 111111; Nam — nhân viên, PIN 2222), chi phí tháng, và 10–15 đơn mỗi ngày cho cả tháng trước (có BOGO, ly mời, tip, vài đơn huỷ, đóng két). Xem ở Tổng quan / Báo cáo / Giá vốn với khoảng "Tháng trước". Nút "Xoá sạch dữ liệu demo" xoá đúng các bản ghi có mã `DEMO…`, không đụng dữ liệu thật.
+
+### In bill cho khách
+
+- Nút máy in trên đơn đang làm (và ở bước Thanh toán): in **phiếu tạm tính** (món, khuyến mãi, tổng tiền) cho khách xem trước khi trả. Mã QR chuyển khoản chỉ hiện trên màn hình lúc thanh toán.
+- Sau thanh toán: "In hoá đơn" (hoặc bật tự in), in lại ở chi tiết đơn.
+- Máy in DM01 (58mm): menu ☰ › Máy in › thử **Bluetooth** trước, nếu không thấy máy thì chọn **Qua app RawBT**; bật "Máy in mini" cho ổn định. Có "Xem trước bill mẫu".
+
+## Chưa làm
+
+Chia bill, giảm giá thủ công, hoàn tiền một phần, bar display, chi phí định kỳ, menu engineering, khoá sổ tháng, tích hợp hoá đơn điện tử, nhiều outlet.
 
 ## Lưu ý vận hành
 

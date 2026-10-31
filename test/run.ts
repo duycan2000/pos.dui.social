@@ -65,7 +65,7 @@ let deviceToken = '';
 let staffSession = '';
 async function call(method: string, path: string, data?: unknown, extra: Record<string, string> = {}) {
   const headers: Record<string, string> = { 'content-type': 'application/json', ...extra };
-  if (deviceToken) headers.authorization = 'Bearer ' + deviceToken;
+  if (deviceToken && !extra.authorization) headers.authorization = 'Bearer ' + deviceToken;
   if (staffSession) headers['x-staff-session'] = staffSession;
   const res = await worker.fetch(new Request('https://pos.test' + path, { method, headers, body: data === undefined ? undefined : JSON.stringify(data) }), env);
   const text = await res.text();
@@ -269,6 +269,112 @@ await test('PIN rules, light hash format and lockout after 5 wrong tries', async
   assert.ok(h.startsWith('2000$'));
   assert.ok(await verifyPin('123456', 'salt', h));
   assert.ok(!(await verifyPin('123457', 'salt', h)));
+});
+
+// ---------- tabs, comps, tips, bank webhooks ----------
+const mkOrder = (over: Partial<Order>): Order => ({
+  id: ulid(), outlet_id: 'x', device_id: 'x', short_code: 'A-100', business_day: day, staff_id: ownerId, staff_shift_id: null, drawer_session_id: null,
+  order_type: 'dine_in', customer_label: 'Tab John', status: 'open', subtotal: 0, promo_total: 0, discount_total: 0, total: 0,
+  sent_at: Date.now(), paid_at: null, void_reason: null, voided_by: null, approved_by: null, voided_at: null, created_at: Date.now(), updated_at: Date.now(),
+  lines: [], adjustments: [], payments: [], ...over,
+});
+await test('Comp line: free for the guest, excluded from BOGO, value reported', () => {
+  const comp = { ...line('c', 'S1', 120000, 1), comp: 1, comp_reason: 'Khách quen' };
+  const t = computeTotals([line('a', 'S1', 120000, 1), comp], [promo], pi(['S1']), Date.now(), 420);
+  assert.equal(t.promo_total, 0);
+  assert.equal(t.comp_total, 120000);
+  assert.equal(t.total, 120000);
+});
+const drawer2 = ulid();
+await test('Open tab: rounds from two devices merge; totals recomputed; late lines after payment are refused', async () => {
+  const t0 = Date.now();
+  await call('POST', '/api/sync/push', { records: [{ type: 'drawer_session', data: { id: drawer2, outlet_id: 'x', business_day: day, status: 'open', opened_by: ownerId, opened_at: t0, opening_float: 0, opening_count_json: null, closed_by: null, closed_at: null, counted_json: null, counted_total: null, expected_total: null, difference: null, note: null, device_id: null, created_at: t0, updated_at: t0 } }] });
+  const L1 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };
+  const L2 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };
+  const tab = mkOrder({ drawer_session_id: drawer2, lines: [L1], subtotal: 120000, total: 120000 });
+  await call('POST', '/api/sync/push', { records: [{ type: 'order', data: tab }] });
+  await call('POST', '/api/sync/push', { records: [{ type: 'order', data: { ...tab, lines: [L2] } }] }); // other device's copy
+  let srv = (await call('GET', '/api/sync/pull?since=0')).body.orders.find((o: any) => o.id === tab.id);
+  assert.equal(srv.lines.length, 2);
+  assert.equal(srv.subtotal, 240000);
+  assert.equal(srv.total, 120000); // BOGO on the merged rounds
+  const z = (await call('GET', `/api/drawer/${drawer2}/zreport`)).body;
+  assert.equal(z.open_tabs, 1);
+  const paid = { ...tab, status: 'paid' as const, lines: [L1, L2], subtotal: 240000, promo_total: 120000, total: 120000, paid_at: Date.now(),
+    payments: [{ id: ulid(), method: 'cash' as const, amount: 120000, tip: 20000, tendered: 200000, change_given: 60000, reference: null, status: 'confirmed' as const, confirmed_by: ownerId, confirmed_at: Date.now(), drawer_session_id: drawer2, created_at: Date.now() }] };
+  await call('POST', '/api/sync/push', { records: [{ type: 'order', data: paid }] });
+  const late = await call('POST', '/api/sync/push', { records: [{ type: 'order', data: { ...tab, lines: [L1, L2, { ...line(ulid(), itemId, 120000, 1) }] } }] });
+  assert.equal(late.body.results[0].ok, false);
+  srv = (await call('GET', '/api/sync/pull?since=0')).body.orders.find((o: any) => o.id === tab.id);
+  assert.equal(srv.lines.length, 2);
+  assert.equal(srv.tip_total, 20000);
+});
+await test('Cash tips are in the drawer but not in revenue', async () => {
+  const z = (await call('GET', `/api/drawer/${drawer2}/zreport`)).body;
+  assert.equal(z.tips.cash, 20000);
+  assert.equal(z.by_method.cash, 120000);
+  assert.equal(z.expected_cash, 140000);
+  const rep = (await call('GET', `/api/reports/revenue?from=${day}&to=${day}`)).body;
+  assert.equal(rep.totals.tips, 20000);
+});
+await test('Drawer cannot close with an open tab', async () => {
+  await call('POST', '/api/sync/push', { records: [{ type: 'order', data: mkOrder({ short_code: 'A-101', drawer_session_id: drawer2, lines: [line(ulid(), itemId, 120000, 1)] }) }] });
+  const r = await call('POST', `/api/drawer/${drawer2}/close`, { counted: {}, note: 'x' });
+  assert.equal(r.status, 409);
+});
+await test('Bank webhook (SePay): key required, dedup, auto-confirms a waiting order, extra = tip', async () => {
+  env.BANK_WEBHOOK_KEY = 'secret-key';
+  const waiting = mkOrder({ short_code: 'B-002', status: 'awaiting_payment', drawer_session_id: drawer2, lines: [line(ulid(), itemId, 100000, 1)], subtotal: 100000, total: 100000,
+    payments: [{ id: ulid(), method: 'vietqr', amount: 100000, tendered: null, change_given: 0, reference: 'DUI B002', status: 'pending', confirmed_by: null, confirmed_at: null, drawer_session_id: drawer2, created_at: Date.now() }] });
+  await call('POST', '/api/sync/push', { records: [{ type: 'order', data: waiting }] });
+  const payload = { id: 501, gateway: 'Vietcombank', transactionDate: '2026-10-31 20:00:00', accountNumber: '0123', code: null, content: 'dui b002 chuyen tien', transferType: 'in', description: '', transferAmount: 120000, accumulated: 0, referenceCode: 'FT1' };
+  assert.equal((await call('POST', '/api/webhooks/bank', payload, { authorization: 'Apikey wrong' })).status, 401);
+  const ok = await call('POST', '/api/webhooks/bank', payload, { authorization: 'Apikey secret-key' });
+  assert.deepEqual(ok.body, { success: true });
+  await call('POST', '/api/webhooks/bank', payload, { authorization: 'Apikey secret-key' }); // retry
+  const srv = (await call('GET', '/api/sync/pull?since=0')).body.orders.find((o: any) => o.id === waiting.id);
+  assert.equal(srv.status, 'paid');
+  assert.equal(srv.payments.length, 1);
+  assert.equal(srv.payments[0].tip, 20000);
+  const cfg2 = (await call('GET', '/api/sync/pull?since=0')).body.config;
+  assert.equal(cfg2.features.bankWebhook, true);
+});
+await test('Bank check while the QR is on screen (Casso format), then admin list', async () => {
+  await call('POST', '/api/webhooks/bank?key=secret-key', { error: 0, data: [{ id: 9001, tid: 'R1', description: 'DUI A777', amount: 50000, when: '2026-10-31 20:01:00', bank_sub_acc_id: '0123', bankName: 'VPBank' }] });
+  const c1 = (await call('GET', '/api/bank/check?code=A-777&amount=50000')).body;
+  assert.equal(c1.found, true);
+  assert.equal((await call('GET', '/api/bank/check?code=A-777&amount=50000')).body.found, false); // claimed once
+  const list = (await call('GET', '/api/admin/bank-txns')).body;
+  assert.ok(list.some((t: any) => t.id === 'casso:9001' && t.status === 'claimed'));
+});
+
+await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe that keeps real data', async () => {
+  const realBefore = (env.DB.raw.prepare("SELECT COUNT(*) n FROM sale_order WHERE id NOT LIKE 'DEMO%'").get() as any).n;
+  const st = (await call('GET', '/api/admin/demo')).body;
+  assert.equal(st.seeded, false);
+  assert.ok(st.days.length >= 28);
+  assert.equal((await call('POST', '/api/admin/demo/seed', { step: 'menu' })).status, 200);
+  assert.equal((await call('POST', '/api/admin/demo/seed', { step: 'menu' })).status, 409);
+  for (const d of st.days) {
+    const r = await call('POST', '/api/admin/demo/seed', { step: 'day', day: d });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.ok(r.body.orders >= 10 && r.body.orders <= 15, `${d}: ${r.body.orders}`);
+  }
+  const from = st.days[0], to = st.days[st.days.length - 1];
+  const dash = (await call('GET', `/api/fin/dashboard?from=${from}&to=${to}`)).body;
+  assert.ok(dash.current.orders > 250 && dash.current.revenue > 20_000_000, JSON.stringify(dash.current));
+  assert.ok(dash.current.pnl.cogs > 0 && dash.current.tips > 0 && dash.current.comp > 0);
+  const neg = (env.DB.raw.prepare("SELECT COUNT(*) n FROM ingredient WHERE id LIKE 'DEMO%' AND stock_base < 0").get() as any).n;
+  assert.equal(neg, 0, 'demo stock went negative');
+  const cost = (await call('GET', '/api/inv/costing')).body;
+  assert.ok(cost.items.filter((i: any) => i.has_recipe).length >= 17);
+  assert.equal((await call('POST', '/api/admin/demo/clear')).status, 200);
+  for (const t of ['sale_order', 'order_line', 'item', 'ingredient', 'staff', 'ledger_entry', 'drawer_session', 'stock_movement', 'recipe_line']) {
+    const left = (env.DB.raw.prepare(`SELECT COUNT(*) n FROM ${t} WHERE ${t === 'order_line' ? 'order_id' : 'id'} LIKE 'DEMO%'`).get() as any).n;
+    assert.equal(left, 0, t);
+  }
+  assert.equal((env.DB.raw.prepare("SELECT COUNT(*) n FROM sale_order").get() as any).n, realBefore);
+  assert.equal((await call('GET', '/api/admin/demo')).body.seeded, false);
 });
 
 console.log(`\n${passed} checks passed`);

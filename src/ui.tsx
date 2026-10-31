@@ -1,4 +1,4 @@
-// Shared UI pieces: icons, PIN pad, sheets, money input, manager approval dialog (S18), toast.
+// Shared UI: icons, top bar, sheets, PIN pad, amount keypad, segmented control, approval dialog (S18), toast.
 import { type ReactNode, useEffect, useState } from 'react';
 import { verifyPin } from '../shared/crypto';
 import type { StaffPublic } from '../shared/types';
@@ -8,6 +8,7 @@ import { getState, isManager, useStore } from './lib/store';
 const paths: Record<string, ReactNode> = {
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   back: <path d="M15 18l-6-6 6-6" />,
+  chevron: <path d="M9 6l6 6-6 6" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
   sync: <><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3" /><path d="M5 4v4h4M19 20v-4h-4" /></>,
@@ -15,10 +16,10 @@ const paths: Record<string, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></>,
-  cash: <><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></>,
-  qr: <><rect x="4" y="4" width="6" height="6" /><rect x="14" y="4" width="6" height="6" /><rect x="4" y="14" width="6" height="6" /><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" /></>,
-  card: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18" /></>,
-  split: <path d="M12 3v18M5 8h4M15 16h4M5 16h4M15 8h4" />,
+  cash: <><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 9v.01M18 15v.01" /></>,
+  qr: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" /></>,
+  card: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18M7 15h3" /></>,
+  split: <><path d="M12 3v18" /><rect x="3" y="7" width="7" height="10" rx="2" /><rect x="14" y="7" width="7" height="10" rx="2" /></>,
   lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
   door: <><path d="M14 4h5v16h-5" /><path d="M10 12h9M7 9l-3 3 3 3" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" /></>,
@@ -27,23 +28,39 @@ const paths: Record<string, ReactNode> = {
   camera: <><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></>,
   edit: <path d="M4 20h4L19 9l-4-4L4 16v4z" />,
   warn: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18v.5" /></>,
+  tab: <><path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2z" /><path d="M9 9h6M9 13h4" /></>,
+  printer: <><path d="M7 9V4h10v5" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v6H7z" /></>,
+  gift: <><rect x="3" y="8" width="18" height="5" rx="1" /><path d="M5 13v8h14v-8M12 8v13M12 8S9 3 7 5s3 3 5 3c2 0 7-1 5-3s-5 3-5 3" /></>,
+  heart: <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />,
+  bank: <><path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18" /></>,
+  home: <><path d="M4 11l8-7 8 7" /><path d="M6 10v10h12V10" /></>,
+  chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+  box: <><path d="M3 7l9-4 9 4-9 4z" /><path d="M3 7v10l9 4 9-4V7M12 11v10" /></>,
+  users: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c.5-4 3.5-6 7-6s6.5 2 7 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.5 2.5 4 6" /></>,
+  receipt: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
+  tag: <><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.5" /></>,
+  sliders: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  phone: <><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></>,
+  bluetooth: <path d="M7 7l10 10-5 4V3l5 4L7 17" />,
 };
 
-export function Icon({ name, size = 22 }: { name: keyof typeof paths | string; size?: number }) {
+export function Icon({ name, size = 22 }: { name: string; size?: number }) {
   return (
-    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       {paths[name]}
     </svg>
   );
 }
 
-export function TopBar({ title, sub, onBack, right }: { title: ReactNode; sub?: ReactNode; onBack?: () => void; right?: ReactNode }) {
+export function TopBar({ title, sub, onBack, right, left }: { title: ReactNode; sub?: ReactNode; onBack?: () => void; right?: ReactNode; left?: ReactNode }) {
   return (
     <header className="topbar">
       {onBack && <button className="iconbtn" aria-label="Quay lại" onClick={onBack}><Icon name="back" /></button>}
+      {left}
       <div className="grow col" style={{ gap: 0 }}>
-        <h1>{title}</h1>
-        {sub && <span className="tiny muted">{sub}</span>}
+        <h1 className="ellipsis">{title}</h1>
+        {sub && <span className="sub ellipsis">{sub}</span>}
       </div>
       {right}
     </header>
@@ -51,6 +68,11 @@ export function TopBar({ title, sub, onBack, right }: { title: ReactNode; sub?: 
 }
 
 export function Sheet({ children, onClose, middle }: { children: ReactNode; onClose: () => void; middle?: boolean }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   return (
     <div className={'overlay' + (middle ? ' middle' : '')} onClick={onClose}>
       <div className={middle ? 'dialog' : 'sheet'} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">{children}</div>
@@ -58,34 +80,65 @@ export function Sheet({ children, onClose, middle }: { children: ReactNode; onCl
   );
 }
 
+export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <div className="seg" role="tablist">
+      {options.map(([v, l]) => <button key={v} role="tab" aria-selected={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>{l}</button>)}
+    </div>
+  );
+}
+
 export function PinPad({ length = 6, onSubmit, busy }: { length?: number; onSubmit: (pin: string) => Promise<boolean> | boolean; busy?: boolean }) {
   const [pin, setPin] = useState('');
   const [err, setErr] = useState(false);
+  const submit = async (p: string) => {
+    if (p.length < 4) return;
+    const ok = await onSubmit(p);
+    if (!ok) { setErr(true); setPin(''); navigator.vibrate?.(80); }
+  };
   const press = async (k: string) => {
     if (busy) return;
     setErr(false);
     if (k === 'del') return setPin((p) => p.slice(0, -1));
-    if (k === 'ok') {
-      if (pin.length < 4) return;
-      const ok = await onSubmit(pin);
-      if (!ok) { setErr(true); setPin(''); }
-      return;
-    }
-    if (pin.length < length) setPin(pin + k);
+    if (k === 'ok') return submit(pin);
+    if (pin.length >= length) return;
+    const next = pin + k;
+    setPin(next);
+    if (next.length === length) submit(next); // auto-submit at 6 digits
   };
   return (
     <div>
-      <div className="pindots" aria-label={`Đã nhập ${pin.length} số`}>
-        {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => <span key={i} className={i < pin.length ? 'on' : ''} />)}
+      <div className={'pindots' + (err ? ' shake' : '')} aria-label={`Đã nhập ${pin.length} số`}>
+        {Array.from({ length: Math.max(4, Math.min(length, Math.max(pin.length, 6))) }).map((_, i) => <span key={i} className={i < pin.length ? 'on' : ''} />)}
       </div>
-      {err && <p className="danger center row small" style={{ marginTop: -8 }}>Sai PIN, thử lại</p>}
+      <p className="danger small" style={{ textAlign: 'center', marginTop: -10, minHeight: 18 }}>{err ? 'Sai PIN, thử lại' : ''}</p>
       <div className="pinpad">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'].map((k) => (
-          <button key={k} onClick={() => press(k)} aria-label={k === 'del' ? 'Xoá' : k === 'ok' ? 'Xác nhận' : k} style={k === 'ok' ? { background: 'var(--accent)', color: 'var(--accent-ink)' } : undefined}>
+          <button key={k} onClick={() => press(k)} aria-label={k === 'del' ? 'Xoá' : k === 'ok' ? 'Xác nhận' : k}
+            style={k === 'ok' ? { background: 'var(--accent)', color: 'var(--accent-ink)', fontSize: 17 } : undefined}>
             {k === 'del' ? '⌫' : k === 'ok' ? 'OK' : k}
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Large amount keypad (Toast-style): digits, 000, backspace. Value in VND. */
+export function Keypad({ value, onChange, max = 999_999_999 }: { value: number; onChange: (v: number) => void; max?: number }) {
+  const press = (k: string) => {
+    let s = String(value || '');
+    if (k === 'del') s = s.slice(0, -1);
+    else if (k === 'C') s = '';
+    else s = s + k;
+    const v = Math.min(max, parseInt(s || '0', 10) || 0);
+    onChange(v);
+  };
+  return (
+    <div className="keypad">
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'del'].map((k) => (
+        <button key={k} className={k === 'del' || k === '000' ? 'fn' : ''} onClick={() => press(k)} aria-label={k === 'del' ? 'Xoá số' : k}>{k === 'del' ? '⌫' : k}</button>
+      ))}
     </div>
   );
 }
@@ -110,14 +163,14 @@ export function Toast() {
   return <div className={'toast' + (t.error ? ' error' : '')} role="status">{t.msg}</div>;
 }
 
-/** S18 — shared manager approval. If the logged-in user is a manager, only the reason is asked. */
+/** S18 — shared manager approval. A logged-in manager only gives the reason (unless a PIN is forced). */
 export function ApprovalDialog() {
   const a = useStore((s) => s.approval);
   const staff = useStore((s) => s.staff);
   const cfg = useStore((s) => s.config);
   const [reason, setReason] = useState('');
   const [step, setStep] = useState<'reason' | 'pin'>('reason');
-  useEffect(() => { setReason(''); setStep('reason'); }, [a]);
+  useEffect(() => { setReason(''); setStep(a && !a.reasonRequired && !a.reasons && a.forcePin ? 'pin' : 'reason'); }, [a]);
   if (!a) return null;
   const selfApprove = isManager(staff) && !a.forcePin;
   const managers = (cfg?.staff ?? []).filter((s) => s.role !== 'staff' && s.active);
@@ -134,8 +187,13 @@ export function ApprovalDialog() {
   };
   return (
     <Sheet middle onClose={() => a.resolve(null)}>
-      <h2>{selfApprove ? 'Xác nhận' : 'Quản lý duyệt'}</h2>
-      <p className="muted small" style={{ marginTop: -6 }}>{a.title}</p>
+      <div className="row gap12" style={{ marginBottom: 14 }}>
+        <div className="iconbtn" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="lock" /></div>
+        <div className="col" style={{ gap: 2 }}>
+          <h2>{selfApprove ? 'Xác nhận' : 'Quản lý duyệt'}</h2>
+          <span className="small muted">{a.title}</span>
+        </div>
+      </div>
       {step === 'reason' ? (
         <div className="col gap12">
           {a.reasons && (
@@ -146,16 +204,16 @@ export function ApprovalDialog() {
           <label className="field"><span>Lý do {a.reasonRequired ? '(bắt buộc)' : ''}</span>
             <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Nhập lý do" />
           </label>
-          <div className="row">
+          <div className="row mt8">
             <button className="btn grow" onClick={() => a.resolve(null)}>Huỷ</button>
-            <button className="btn primary grow" disabled={a.reasonRequired && !reason.trim()} onClick={next}>{selfApprove ? 'Xác nhận' : 'Tiếp'}</button>
+            <button className="btn primary grow" disabled={a.reasonRequired && !reason.trim()} onClick={next}>{selfApprove ? 'Xác nhận' : 'Tiếp tục'}</button>
           </div>
         </div>
       ) : (
         <>
-          <p className="small">Lý do: <b>{reason || '—'}</b></p>
+          {reason && <p className="small muted" style={{ margin: 0 }}>Lý do: <b style={{ color: 'var(--text)' }}>{reason}</b></p>}
           <PinPad onSubmit={finish} />
-          <button className="btn block mt8" onClick={() => a.resolve(null)}>Huỷ</button>
+          <button className="btn block ghost mt8" onClick={() => a.resolve(null)}>Huỷ</button>
         </>
       )}
     </Sheet>
@@ -166,7 +224,7 @@ export function Confirm({ title, text, okText = 'Đồng ý', danger, onOk, onCa
   return (
     <Sheet middle onClose={onCancel}>
       <h2>{title}</h2>
-      {text && <div className="muted" style={{ marginBottom: 16 }}>{text}</div>}
+      {text && <div className="muted" style={{ margin: '8px 0 20px' }}>{text}</div>}
       <div className="row">
         <button className="btn grow" onClick={onCancel}>Không</button>
         <button className={'btn grow ' + (danger ? 'danger' : 'primary')} onClick={onOk}>{okText}</button>
@@ -175,6 +233,9 @@ export function Confirm({ title, text, okText = 'Đồng ý', danger, onOk, onCa
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="pad center row muted" style={{ minHeight: 120, textAlign: 'center' }}>{children}</div>;
+export function Empty({ children, icon = 'receipt' }: { children: ReactNode; icon?: string }) {
+  return <div className="empty"><div className="ico"><Icon name={icon} size={26} /></div><div>{children}</div></div>;
 }
+
+/** Category accent colours for tiles and chips, by category order. */
+export const CAT_COLORS = ['#f5a524', '#f472b6', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635'];

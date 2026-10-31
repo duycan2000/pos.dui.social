@@ -1,5 +1,7 @@
 // Dui Social POS — Cloudflare Worker entry: API routes + static app from ./dist.
 import * as admin from './admin';
+import * as bank from './bank';
+import * as demo from './demo';
 import { needsSetup, registerDevice, resolveDevice, resolveStaff, setup, staffLogin } from './auth';
 import * as fin from './finance';
 import { type Ctx, type Env, HttpError, json, Router } from './http';
@@ -13,6 +15,7 @@ const r = new Router()
   .add('POST', '/api/devices/register', 'none', registerDevice)
   .add('GET', '/api/public/menu', 'none', admin.publicMenu)
   .add('GET', '/media/:a/:b', 'none', admin.serveMedia)
+  .add('POST', '/api/webhooks/bank', 'none', bank.webhook)
 
   // selling devices
   .add('GET', '/api/sync/pull', 'device', pull)
@@ -20,6 +23,7 @@ const r = new Router()
   .add('POST', '/api/auth/staff', 'device', staffLogin)
   .add('POST', '/api/media', 'device', admin.uploadMedia)
   .add('GET', '/api/drawer/:id/zreport', 'device', getZReport)
+  .add('GET', '/api/bank/check', 'device', bank.check)
   .add('POST', '/api/drawer/:id/close', 'staff', closeDrawer)
 
   // back office
@@ -31,6 +35,12 @@ const r = new Router()
   .add('GET', '/api/admin/devices', 'staff', admin.listDevices)
   .add('PUT', '/api/admin/devices/:id', 'staff', admin.setDeviceActive)
   .add('GET', '/api/admin/audit', 'staff', admin.listAudit)
+  .add('GET', '/api/admin/demo', 'staff', demo.status)
+  .add('POST', '/api/admin/demo/seed', 'staff', demo.seed)
+  .add('POST', '/api/admin/demo/clear', 'staff', demo.clear)
+  .add('GET', '/api/admin/bank-txns', 'staff', bank.listTxns)
+  .add('POST', '/api/admin/bank-txns/:id/ignore', 'staff', bank.ignoreTxn)
+  .add('POST', '/api/admin/bank-txns/:id/match', 'staff', bank.matchTxn)
   .add('GET', '/api/admin/item/:id/groups', 'staff', admin.getItemGroups)
   .add('PUT', '/api/admin/item/:id/groups', 'staff', admin.setItemGroups)
   .add('GET', '/api/admin/promotion/:id/items', 'staff', admin.getPromoItems)

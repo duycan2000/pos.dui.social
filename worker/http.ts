@@ -5,6 +5,8 @@ export interface Env {
   DB: D1Database;
   MEDIA: R2Bucket;
   ASSETS: Fetcher;
+  /** Secret shared with SePay/Casso for bank-transfer webhooks (optional). */
+  BANK_WEBHOOK_KEY?: string;
 }
 
 export interface Ctx {

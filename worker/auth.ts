@@ -144,5 +144,5 @@ export async function configSnapshot(env: Env, device: Ctx['device']): Promise<P
     all(env, 'SELECT * FROM promotion'),
     all(env, 'SELECT promotion_id,item_id FROM promotion_item'),
   ]);
-  return { outlet, device: device!, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems } as PosConfig;
+  return { outlet, device: device!, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems, features: { bankWebhook: !!env.BANK_WEBHOOK_KEY } } as PosConfig;
 }

@@ -1,17 +1,19 @@
 {
+  // Dui Social POS — one Worker serves the API (/api/*, /media/*) and the built app (dist/).
   "name": "dui-social-pos",
   "main": "worker/index.ts",
   "compatibility_date": "2024-10-22",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": true,
+    "run_worker_first": true, // the Worker answers /api and /media itself and hands everything else to ASSETS
     "binding": "ASSETS"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "dui-pos",
+      // Replace with the id printed by: npx wrangler d1 create dui-pos
       "database_id": "382004c4-b098-4f30-89fe-370dad4c6b89",
       "migrations_dir": "migrations"
     }
@@ -19,6 +21,7 @@
   "r2_buckets": [
     {
       "binding": "MEDIA",
+      // Create with: npx wrangler r2 bucket create dui-pos-media
       "bucket_name": "dui-pos-media"
     }
   ],

@@ -2,7 +2,7 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { mediaUrl, uploadPhoto } from '../lib/api';
 import { navigate, toast } from '../lib/store';
-import { Icon, TopBar } from '../ui';
+import { Icon } from '../ui';
 
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -18,11 +18,18 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
 
 export function Page({ title, sub, back = 'admin', right, children, footer }: { title: string; sub?: ReactNode; back?: string; right?: ReactNode; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="screen wide">
-      <TopBar title={title} sub={sub} onBack={() => navigate(back)} right={right} />
-      <div className="scroll pad col gap12" style={{ paddingTop: 0 }}>{children}</div>
-      {footer && <div className="cartbar">{footer}</div>}
-    </div>
+    <>
+      <header className="topbar">
+        <button className={'iconbtn' + (back === 'admin' ? ' back-phone' : '')} aria-label="Quay lại" onClick={() => navigate(back)}><Icon name="back" /></button>
+        <div className="grow col" style={{ gap: 0 }}>
+          <h1 className="ellipsis">{title}</h1>
+          {sub && <span className="sub ellipsis">{sub}</span>}
+        </div>
+        {right && <div className="page-actions">{right}</div>}
+      </header>
+      <div className="content"><div className="content-inner">{children}</div></div>
+      {footer && <div className="ticketbar">{footer}</div>}
+    </>
   );
 }
 

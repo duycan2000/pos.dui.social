@@ -145,7 +145,7 @@ export async function listPurchases(c: Ctx) {
   requireRole(c, 'owner', 'manager');
   const rows = await all<any>(c.env, 'SELECT p.*, s.name supplier_name, st.name staff_name FROM purchase p LEFT JOIN supplier s ON s.id=p.supplier_id LEFT JOIN staff st ON st.id=p.staff_id ORDER BY p.created_at DESC LIMIT 100');
   if (!rows.length) return json([]);
-  const lines = await all<any>(c.env, `SELECT pl.*, i.name ingredient_name, i.purchase_unit FROM purchase_line pl JOIN ingredient i ON i.id=pl.ingredient_id WHERE pl.purchase_id IN (${rows.map(() => '?').join(',')})`, ...rows.map((r) => r.id));
+  const lines = await all<any>(c.env, 'SELECT pl.*, i.name ingredient_name, i.purchase_unit FROM purchase_line pl JOIN ingredient i ON i.id=pl.ingredient_id WHERE pl.purchase_id IN (SELECT id FROM purchase ORDER BY created_at DESC LIMIT 100)');
   return json(rows.map((r) => ({ ...r, lines: lines.filter((l) => l.purchase_id === r.id) })));
 }
 

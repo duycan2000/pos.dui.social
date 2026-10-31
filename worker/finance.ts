@@ -15,8 +15,8 @@ function range(c: Ctx, todayDay: string) {
 
 async function periodSummary(env: Env, from: string, to: string) {
   const [s, pays, ledger, cash] = await Promise.all([
-    first<{ n: number; gross: number; promo: number; disc: number; net: number; cogs: number }>(env,
-      "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net, COALESCE(SUM(cost_total),0) cogs FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ?", from, to),
+    first<{ n: number; gross: number; promo: number; disc: number; net: number; cogs: number; comp: number; tips: number }>(env,
+      "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net, COALESCE(SUM(cost_total),0) cogs, COALESCE(SUM(comp_total),0) comp, COALESCE(SUM(tip_total),0) tips FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ?", from, to),
     all<{ method: string; s: number }>(env,
       "SELECT p.method, COALESCE(SUM(p.amount),0) s FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.status='paid' AND p.status='confirmed' AND o.business_day BETWEEN ? AND ? GROUP BY p.method", from, to),
     all<{ direction: string; category: string; s: number }>(env,
@@ -42,7 +42,7 @@ async function periodSummary(env: Env, from: string, to: string) {
   }
   const net = s!.net;
   return {
-    orders: s!.n, gross: s!.gross, promo: s!.promo, discount: s!.disc, revenue: net,
+    orders: s!.n, gross: s!.gross, promo: s!.promo, discount: s!.disc, comp: s!.comp, tips: s!.tips, revenue: net,
     aov: s!.n ? Math.round(net / s!.n) : 0,
     by_method: byMethod,
     cash_flow: { in: salesIn + ledgerIn + cashIn, out: ledgerOut + cashOut, net: salesIn + ledgerIn + cashIn - ledgerOut - cashOut, sales_in: salesIn, other_in: ledgerIn + cashIn },
@@ -60,7 +60,7 @@ export async function dashboard(c: Ctx) {
   const prevTo = addDays(from, -1);
   const prevFrom = addDays(prevTo, -(len - 1));
   const tz = o.tz_offset_min * 60;
-  const [cur, prev, byHour, top, byDay] = await Promise.all([
+  const [cur, prev, byHour, top, byDay, tipsByStaff] = await Promise.all([
     periodSummary(c.env, from, to),
     periodSummary(c.env, prevFrom, prevTo),
     all<{ h: number; s: number; n: number }>(c.env,
@@ -69,8 +69,10 @@ export async function dashboard(c: Ctx) {
       "SELECT l.item_name name, SUM(l.qty) qty, SUM(l.line_total) revenue, SUM(l.line_cost) cost FROM order_line l JOIN sale_order o ON o.id=l.order_id WHERE o.status='paid' AND l.status='active' AND o.business_day BETWEEN ? AND ? GROUP BY l.item_name ORDER BY qty DESC LIMIT 15", from, to),
     all<{ day: string; s: number; n: number }>(c.env,
       "SELECT business_day day, COALESCE(SUM(total),0) s, COUNT(*) n FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ? GROUP BY business_day ORDER BY business_day", from, to),
+    all<{ name: string; tips: number; orders: number }>(c.env,
+      "SELECT s.name, COALESCE(SUM(o.tip_total),0) tips, COUNT(*) orders FROM sale_order o JOIN staff s ON s.id=o.staff_id WHERE o.status='paid' AND o.tip_total > 0 AND o.business_day BETWEEN ? AND ? GROUP BY s.name ORDER BY tips DESC", from, to),
   ]);
-  return json({ from, to, prev_from: prevFrom, prev_to: prevTo, current: cur, previous: prev, by_hour: byHour, top_items: top, by_day: byDay });
+  return json({ from, to, prev_from: prevFrom, prev_to: prevTo, current: cur, previous: prev, by_hour: byHour, top_items: top, by_day: byDay, tips_by_staff: tipsByStaff });
 }
 
 // ----- cash book -----
@@ -136,8 +138,8 @@ export async function revenueReport(c: Ctx) {
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);
   const { from, to } = range(c, today);
   const [days, pays, voids, voidList] = await Promise.all([
-    all<{ day: string; n: number; gross: number; promo: number; disc: number; net: number }>(c.env,
-      "SELECT business_day day, COUNT(*) n, SUM(subtotal) gross, SUM(promo_total) promo, SUM(discount_total) disc, SUM(total) net FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ? GROUP BY business_day ORDER BY business_day", from, to),
+    all<{ day: string; n: number; gross: number; promo: number; disc: number; net: number; comp: number; tips: number }>(c.env,
+      "SELECT business_day day, COUNT(*) n, SUM(subtotal) gross, SUM(promo_total) promo, SUM(discount_total) disc, SUM(total) net, SUM(comp_total) comp, SUM(tip_total) tips FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ? GROUP BY business_day ORDER BY business_day", from, to),
     all<{ day: string; method: string; s: number }>(c.env,
       "SELECT o.business_day day, p.method, SUM(p.amount) s FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.status='paid' AND p.status='confirmed' AND o.business_day BETWEEN ? AND ? GROUP BY o.business_day, p.method", from, to),
     all<{ day: string; n: number; v: number }>(c.env,
@@ -147,19 +149,19 @@ export async function revenueReport(c: Ctx) {
   const rows = days.map((d) => {
     const m = (k: string) => pays.find((p) => p.day === d.day && p.method === k)?.s || 0;
     const v = voids.find((x) => x.day === d.day);
-    return { day: d.day, orders: d.n, gross: d.gross, promo: d.promo, discount: d.disc, net: d.net, cash: m('cash'), vietqr: m('vietqr'), card: m('card'), voids: v?.n || 0, void_value: v?.v || 0 };
+    return { day: d.day, orders: d.n, gross: d.gross, promo: d.promo, discount: d.disc, comp: d.comp || 0, net: d.net, tips: d.tips || 0, cash: m('cash'), vietqr: m('vietqr'), card: m('card'), voids: v?.n || 0, void_value: v?.v || 0 };
   });
-  for (const v of voids) if (!rows.find((r) => r.day === v.day)) rows.push({ day: v.day, orders: 0, gross: 0, promo: 0, discount: 0, net: 0, cash: 0, vietqr: 0, card: 0, voids: v.n, void_value: v.v });
+  for (const v of voids) if (!rows.find((r) => r.day === v.day)) rows.push({ day: v.day, orders: 0, gross: 0, promo: 0, discount: 0, comp: 0, net: 0, tips: 0, cash: 0, vietqr: 0, card: 0, voids: v.n, void_value: v.v });
   rows.sort((a, b) => a.day.localeCompare(b.day));
   const totals = rows.reduce((t, r) => {
-    for (const k of ['orders', 'gross', 'promo', 'discount', 'net', 'cash', 'vietqr', 'card', 'voids', 'void_value'] as const) t[k] += r[k];
+    for (const k of ['orders', 'gross', 'promo', 'discount', 'comp', 'net', 'tips', 'cash', 'vietqr', 'card', 'voids', 'void_value'] as const) t[k] += r[k];
     return t;
-  }, { orders: 0, gross: 0, promo: 0, discount: 0, net: 0, cash: 0, vietqr: 0, card: 0, voids: 0, void_value: 0 });
+  }, { orders: 0, gross: 0, promo: 0, discount: 0, comp: 0, net: 0, tips: 0, cash: 0, vietqr: 0, card: 0, voids: 0, void_value: 0 });
 
   if (c.url.searchParams.get('format') === 'csv') {
-    const head = ['Ngày', 'Số đơn', 'Doanh thu gộp', 'Khuyến mãi', 'Giảm giá', 'Doanh thu thuần', 'Tiền mặt', 'Chuyển khoản', 'Thẻ', 'Số đơn huỷ', 'Giá trị huỷ'];
-    const lines = [head, ...rows.map((r) => [r.day, r.orders, r.gross, r.promo, r.discount, r.net, r.cash, r.vietqr, r.card, r.voids, r.void_value]),
-      ['TỔNG', totals.orders, totals.gross, totals.promo, totals.discount, totals.net, totals.cash, totals.vietqr, totals.card, totals.voids, totals.void_value],
+    const head = ['Ngày', 'Số đơn', 'Doanh thu gộp', 'Khuyến mãi', 'Giảm giá', 'Mời (giá bán)', 'Doanh thu thuần', 'Tiền mặt', 'Chuyển khoản', 'Thẻ', 'Tip (không tính doanh thu)', 'Số đơn huỷ', 'Giá trị huỷ'];
+    const lines = [head, ...rows.map((r) => [r.day, r.orders, r.gross, r.promo, r.discount, r.comp, r.net, r.cash, r.vietqr, r.card, r.tips, r.voids, r.void_value]),
+      ['TỔNG', totals.orders, totals.gross, totals.promo, totals.discount, totals.comp, totals.net, totals.cash, totals.vietqr, totals.card, totals.tips, totals.voids, totals.void_value],
       [], ['Đơn huỷ', 'Mã đơn', 'Giá trị', 'Lý do', 'Người huỷ', 'Người duyệt'],
       ...voidList.map((v: any) => [v.business_day, v.short_code, v.total, v.void_reason, v.voided_by_name, v.approved_by_name])];
     const csv = '﻿' + lines.map((l) => l.map(csvCell).join(',')).join('\r\n');

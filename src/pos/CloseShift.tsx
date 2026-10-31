@@ -19,6 +19,8 @@ export default function CloseShift() {
   const [z, setZ] = useState<ZReport | null>(null);
   const myShiftOrders = orders.filter((o) => shift && o.staff_shift_id === shift.id && o.status === 'paid');
   const awaiting = orders.filter((o) => o.status === 'awaiting_payment' && o.drawer_session_id === drawer?.id);
+  const openTabs = orders.filter((o) => o.status === 'open');
+  const myTips = myShiftOrders.reduce((s, o) => s + (o.tip_total || 0), 0);
 
   if (mode === 'report' && z) return <ZView z={z} />;
   if (mode === 'count' && drawer) return <CountDrawer onBack={() => setMode('menu')} onClosed={(r) => { setZ(r); setMode('report'); }} />;
@@ -29,7 +31,7 @@ export default function CloseShift() {
       <div className="scroll pad col gap16" style={{ paddingTop: 0 }}>
         <div className="card col gap12">
           <div className="bold">Kết thúc ca của tôi</div>
-          <div className="small muted">{shift ? `Bắt đầu ${new Date(shift.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · ${myShiftOrders.length} đơn · ${vnd(myShiftOrders.reduce((s, o) => s + o.total, 0))}` : 'Bạn chưa mở ca'}</div>
+          <div className="small muted">{shift ? `Bắt đầu ${new Date(shift.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · ${myShiftOrders.length} đơn · ${vnd(myShiftOrders.reduce((s, o) => s + o.total, 0))}${myTips ? ` · tip ${vnd(myTips)}` : ''}` : 'Bạn chưa mở ca'}</div>
           <p className="small muted" style={{ margin: 0 }}>Két vẫn mở cho người khác. Không cần đếm tiền.</p>
           <button className="btn block" onClick={() => setAskEnd(true)}><Icon name="door" />Kết thúc ca & đăng xuất</button>
         </div>
@@ -40,9 +42,10 @@ export default function CloseShift() {
           ) : <div className="small muted">Không có két đang mở.</div>}
           {net.pending > 0 && <div className="banner">Còn {net.pending} bản ghi chưa đồng bộ trên máy này. Đồng bộ trước khi đóng két.</div>}
           {awaiting.length > 0 && <div className="banner">Còn {awaiting.length} đơn chờ chuyển khoản. Xác nhận hoặc huỷ trước khi đóng.</div>}
+          {openTabs.length > 0 && <div className="banner danger">Còn {openTabs.length} tab đang mở ({openTabs.map((t) => t.customer_label || t.short_code).join(', ')}). Thanh toán hoặc huỷ tab trước khi đóng két.</div>}
           {!net.online && <div className="banner danger">Đóng két cần có mạng để cộng tiền từ tất cả máy.</div>}
           <p className="small muted" style={{ margin: 0 }}>Cần quản lý. Ca của mọi người trên két này sẽ kết thúc.</p>
-          <button className="btn primary block" disabled={!drawer || !net.online} onClick={async () => { await runSync(); setMode('count'); }}>Đếm tiền & đóng két</button>
+          <button className="btn primary block" disabled={!drawer || !net.online || openTabs.length > 0} onClick={async () => { await runSync(); setMode('count'); }}>Đếm tiền & đóng két</button>
         </div>
         <p className="small faint">Đang đăng nhập: {staff.name}</p>
       </div>
@@ -92,7 +95,7 @@ function CountDrawer({ onBack, onClosed }: { onBack: () => void; onClosed: (z: Z
         <div className="card col mt16" style={{ gap: 0 }}>
           <div className="kv"><span className="muted">Đếm được</span><span className="mono bold">{vnd(counted)}</span></div>
           <div className="kv"><span className="muted">Dự kiến</span><span className="mono">{pre ? vnd(pre.expected_cash) : '…'}</span></div>
-          <div className="kv small faint"><span>= đầu ca {pre ? vnd(pre.opening_float, false) : ''} + tiền mặt bán {pre ? vnd(pre.cash_sales, false) : ''} + thu {pre ? vnd(pre.cash_in, false) : ''} − chi {pre ? vnd(pre.cash_out, false) : ''}</span></div>
+          <div className="kv small faint"><span>= đầu ca {pre ? vnd(pre.opening_float, false) : ''} + tiền mặt bán {pre ? vnd(pre.cash_sales, false) : ''} + tip tiền mặt {pre ? vnd(pre.tips.cash, false) : ''} + thu {pre ? vnd(pre.cash_in, false) : ''} − chi {pre ? vnd(pre.cash_out, false) : ''}</span></div>
           <div className={'kv total ' + (diff === 0 ? 'ok' : 'danger')}><span>Chênh lệch</span><span className="mono">{pre ? (diff > 0 ? '+' : '') + vnd(diff) : '…'}</span></div>
         </div>
         {pre && pre.pending_vietqr > 0 && <div className="banner mt8">{pre.pending_vietqr} đơn chờ chuyển khoản chưa được tính.</div>}
@@ -122,6 +125,8 @@ function ZView({ z }: { z: ZReport }) {
           {row('VietQR', vnd(z.by_method.vietqr))}
           {row('Thẻ', vnd(z.by_method.card))}
           {row('Đơn huỷ', `${z.voids} · ${vnd(z.void_value)}`)}
+          {row('Ly mời (giá bán)', vnd(z.comp_value ?? 0))}
+          {row('Tip', `${vnd((z.tips?.cash ?? 0) + (z.tips?.vietqr ?? 0) + (z.tips?.card ?? 0))} (tiền mặt ${vnd(z.tips?.cash ?? 0, false)})`)}
         </div>
         <div className="card col" style={{ gap: 0 }}>
           {row('Đầu ca', vnd(z.opening_float))}

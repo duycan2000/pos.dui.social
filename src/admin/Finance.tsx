@@ -37,6 +37,8 @@ interface Summary {
   cash_flow: { in: number; out: number; net: number; sales_in: number; other_in: number };
   pnl: { revenue: number; cogs: number; gross_profit: number; opex: number; net_profit: number; cogs_pct: number };
   expense_by_category: Record<string, number>;
+  comp: number;
+  tips: number;
 }
 
 export const CATEGORY: Record<string, string> = {
@@ -53,7 +55,7 @@ function Delta({ cur, prev }: { cur: number; prev: number }) {
 
 export function Dashboard() {
   const { from, to, picker } = useRange();
-  const d = useLoad(() => get<{ current: Summary; previous: Summary; by_hour: { h: number; s: number; n: number }[]; top_items: { name: string; qty: number; revenue: number; cost: number }[]; by_day: { day: string; s: number }[]; prev_from: string; prev_to: string }>(`/api/fin/dashboard?from=${from}&to=${to}`), [from, to]);
+  const d = useLoad(() => get<{ current: Summary; previous: Summary; by_hour: { h: number; s: number; n: number }[]; top_items: { name: string; qty: number; revenue: number; cost: number }[]; by_day: { day: string; s: number }[]; tips_by_staff: { name: string; tips: number; orders: number }[]; prev_from: string; prev_to: string }>(`/api/fin/dashboard?from=${from}&to=${to}`), [from, to]);
   const c = d.data?.current;
   const p = d.data?.previous;
   const maxHour = Math.max(1, ...(d.data?.by_hour ?? []).map((x) => x.s));
@@ -70,7 +72,15 @@ export function Dashboard() {
             <div className="stat"><div className="small muted">Số đơn</div><div className="v">{c.orders}</div><Delta cur={c.orders} prev={p.orders} /></div>
             <div className="stat"><div className="small muted">TB mỗi đơn</div><div className="v">{vnd(c.aov)}</div><Delta cur={c.aov} prev={p.aov} /></div>
             <div className="stat"><div className="small muted">Chi phí khuyến mãi</div><div className="v">{vnd(c.promo + c.discount)}</div><Delta cur={c.promo + c.discount} prev={p.promo + p.discount} /></div>
+            <div className="stat"><div className="small muted">Ly mời (giá bán)</div><div className="v">{vnd(c.comp)}</div><Delta cur={c.comp} prev={p.comp} /></div>
+            <div className="stat"><div className="small muted">Tip (ngoài doanh thu)</div><div className="v ok">{vnd(c.tips)}</div><Delta cur={c.tips} prev={p.tips} /></div>
           </div>
+          {d.data!.tips_by_staff.length > 0 && (
+            <div className="card col" style={{ gap: 0 }}>
+              <b style={{ marginBottom: 6 }}>Tip theo nhân viên thu</b>
+              {d.data!.tips_by_staff.map((t) => <div key={t.name} className="kv"><span className="muted">{t.name} · {t.orders} đơn</span><span className="mono">{vnd(t.tips)}</span></div>)}
+            </div>
+          )}
           <div className="form-grid">
             <div className="card col" style={{ gap: 0 }}>
               <b style={{ marginBottom: 6 }}>Dòng tiền</b>

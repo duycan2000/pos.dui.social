@@ -37,7 +37,7 @@ export function promoActiveAt(p: Promotion, ms: number, tzOffsetMin: number): bo
 export function computeBogo(lines: OrderLine[], promo: Promotion, promoItemIds: Set<string>): OrderAdjustment[] {
   const units: { lineId: string; price: number }[] = [];
   for (const l of lines) {
-    if (l.status !== 'active') continue;
+    if (l.status !== 'active' || l.comp) continue;
     if (!promoItemIds.has(l.item_id)) continue;
     if (l.modifiers.some((m) => m.excludes_promo)) continue;
     for (let i = 0; i < l.qty; i++) units.push({ lineId: l.id, price: l.unit_price });
@@ -64,6 +64,7 @@ export interface Totals {
   subtotal: number;
   promo_total: number;
   discount_total: number;
+  comp_total: number;
   total: number;
   adjustments: OrderAdjustment[];
 }
@@ -89,13 +90,23 @@ export function computeTotals(
   const promo_total = adjustments.reduce((s, a) => s + a.amount, 0);
   const discount_total = manualDiscounts.reduce((s, a) => s + a.amount, 0);
   adjustments.push(...manualDiscounts);
-  const total = Math.max(0, subtotal - promo_total - discount_total);
-  return { subtotal, promo_total, discount_total, total, adjustments };
+  // Ly mời: the guest pays nothing for the line; its value is reported as comp.
+  const comp_total = active.filter((l) => l.comp).reduce((s, l) => s + l.line_total, 0);
+  const total = Math.max(0, subtotal - promo_total - discount_total - comp_total);
+  return { subtotal, promo_total, discount_total, comp_total, total, adjustments };
 }
 
-/** Expected cash in the shared drawer. Cash payments are recorded at the amount applied (tendered − change). */
-export function expectedCash(openingFloat: number, cashPayments: number, cashIn: number, cashOut: number): number {
-  return openingFloat + cashPayments + cashIn - cashOut;
+/** Expected cash in the shared drawer: float + cash sales + cash tips + cash in − cash out. */
+export function expectedCash(openingFloat: number, cashPayments: number, cashIn: number, cashOut: number, cashTips = 0): number {
+  return openingFloat + cashPayments + cashTips + cashIn - cashOut;
+}
+
+/** Find an order code like "A-012" inside a bank transfer note ("DUI A012", "dui a 012 thanh toan"…). */
+export function parseOrderCode(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const s = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const m = s.match(/DUI([A-Z])(\d{3,4})/);
+  return m ? `${m[1]}-${m[2]}` : null;
 }
 
 /** Quick-cash suggestions for S11: exact, then round notes above the amount due. */

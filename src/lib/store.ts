@@ -8,6 +8,7 @@ import type {
 import { addDays, businessDay, parseSettings, ulid } from '../../shared/util';
 import { api, setDeviceToken, setStaffSession } from './api';
 import { kv, outbox, table } from './db';
+import { loadPrinter } from './printer';
 
 export interface Cart {
   id: string;
@@ -15,6 +16,8 @@ export interface Cart {
   lines: OrderLine[];
   customer_label: string;
   order_type: Order['order_type'];
+  /** Set when the cart is an open tab loaded for another round or for payment. */
+  tabCode?: string | null;
 }
 
 export interface Approval {
@@ -126,6 +129,7 @@ export async function boot() {
 }
 
 export async function loadLocal() {
+  await loadPrinter();
   const [config, drawers, orders, cash] = await Promise.all([
     kv.get<PosConfig>('config'), kv.get<DrawerSession[]>('drawers'), table<Order>('orders').all(), table<CashMovement>('cash').all(),
   ]);
@@ -220,6 +224,8 @@ export async function endMyShift() {
 }
 
 // ---------- cart ----------
+// The cart is the order being built on this device. For an open tab it holds the tab itself:
+// lines already sent carry sent_at, new rounds do not.
 
 async function saveCart(cart: Cart) {
   setState({ cart });
@@ -251,15 +257,42 @@ export async function addToCart(item: Item, mods: ChosenOption[], qty = 1, note:
   const unit = item.price + mods.reduce((s, m) => s + m.price_delta, 0);
   const k = key({ item_id: item.id, modifiers: mods, note });
   const lines = cart.lines.map((l) => ({ ...l }));
-  const same = lines.find((l) => l.status === 'active' && key(l) === k);
+  // Only merge into a line that has not been sent yet and is not a comp.
+  const same = lines.find((l) => l.status === 'active' && !l.sent_at && !l.comp && key(l) === k);
   if (same) same.qty += qty;
   else lines.push({ id: ulid(), item_id: item.id, item_name: item.name_vi, unit_price: unit, qty, modifiers: mods, line_total: unit * qty, note, status: 'active', sort: lines.length });
   await saveCart({ ...cart, lines, created_at: cart.lines.length ? cart.created_at : Date.now() });
 }
 
 export async function updateLine(id: string, patch: Partial<OrderLine>) {
-  const lines = state.cart.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)).filter((l) => l.qty > 0);
+  const lines = state.cart.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)).filter((l) => l.qty > 0 || l.sent_at);
   await saveCart({ ...state.cart, lines });
+}
+
+/** Remove a line. A line already sent to the bar (tab round) needs a reason and a manager, and is kept as removed. */
+export async function removeLine(id: string): Promise<boolean> {
+  const l = state.cart.lines.find((x) => x.id === id);
+  if (!l) return false;
+  if (!l.sent_at) { await updateLine(id, { qty: 0 }); return true; }
+  const r = await requestApproval({ title: `Bỏ món đã gửi: ${l.qty}× ${l.item_name}`, reasonRequired: true, reasons: ['Khách đổi ý', 'Pha sai', 'Gọi nhầm', 'Hết nguyên liệu'] });
+  if (!r) return false;
+  await updateLine(id, { status: 'removed', removed_by: state.staff!.id, removed_reason: r.reason });
+  await audit({ actor_id: state.staff!.id, approver_id: r.approver.id, action: 'line_remove', entity: 'order', entity_id: state.cart.id, before_json: JSON.stringify({ item: l.item_name, qty: l.qty }), after_json: null, reason: r.reason });
+  return true;
+}
+
+export const COMP_REASONS = ['Khách quen', 'Bạn chủ quán', 'Nhân viên', 'Xin lỗi khách', 'Khuyến mãi riêng'];
+
+/** Ly mời: free for the guest, still deducted from stock. Needs a manager and a reason. */
+export async function compLine(id: string, on: boolean): Promise<boolean> {
+  const l = state.cart.lines.find((x) => x.id === id);
+  if (!l) return false;
+  if (!on) { await updateLine(id, { comp: 0, comp_reason: null, comp_by: null }); return true; }
+  const r = await requestApproval({ title: `Mời: ${l.qty}× ${l.item_name} (${(l.unit_price * l.qty).toLocaleString('vi-VN')} ₫)`, reasonRequired: true, reasons: COMP_REASONS });
+  if (!r) return false;
+  await updateLine(id, { comp: 1, comp_reason: r.reason, comp_by: r.approver.id });
+  await audit({ actor_id: state.staff!.id, approver_id: r.approver.id, action: 'comp', entity: 'order', entity_id: state.cart.id, before_json: null, after_json: JSON.stringify({ item: l.item_name, qty: l.qty, value: l.unit_price * l.qty }), reason: r.reason });
+  return true;
 }
 
 export async function setCartMeta(patch: Partial<Pick<Cart, 'customer_label' | 'order_type'>>) {
@@ -272,16 +305,16 @@ export async function clearCart() {
 
 export function cartTotals(lines = state.cart.lines): Totals {
   const cfg = state.config;
-  if (!cfg) return { subtotal: 0, promo_total: 0, discount_total: 0, total: 0, adjustments: [] };
+  if (!cfg) return { subtotal: 0, promo_total: 0, discount_total: 0, comp_total: 0, total: 0, adjustments: [] };
   const copy = lines.map((l) => ({ ...l }));
   return computeTotals(copy, cfg.promotions, cfg.promotionItems, Date.now(), cfg.outlet.tz_offset_min);
 }
 
-export function cartCount() {
-  return state.cart.lines.filter((l) => l.status === 'active').reduce((s, l) => s + l.qty, 0);
+export function cartCount(lines = state.cart.lines) {
+  return lines.filter((l) => l.status === 'active').reduce((s, l) => s + l.qty, 0);
 }
 
-// ---------- orders ----------
+// ---------- orders & tabs ----------
 
 async function nextShortCode(): Promise<string> {
   const day = today();
@@ -292,6 +325,7 @@ async function nextShortCode(): Promise<string> {
 }
 
 export async function peekShortCode(): Promise<string> {
+  if (state.cart.tabCode) return state.cart.tabCode;
   const day = today();
   const c = (await kv.get<{ day: string; n: number }>('counter')) ?? { day, n: 0 };
   const n = c.day === day ? c.n + 1 : 1;
@@ -306,24 +340,56 @@ async function saveOrder(o: Order) {
   syncKick();
 }
 
-/** Turn the cart into an order: paid now, or awaiting a bank transfer (VietQR). */
-export async function finalizeCart(status: 'paid' | 'awaiting_payment', payments: Payment[]): Promise<Order> {
+async function buildOrder(status: Order['status'], payments: Payment[]): Promise<{ order: Order; newLines: OrderLine[] }> {
   const s = getState();
   const cfg = s.config!;
   const t = Date.now();
-  const lines = s.cart.lines.filter((l) => l.status === 'active').map((l) => ({ ...l }));
-  const totals = computeTotals(lines, cfg.promotions, cfg.promotionItems, t, cfg.outlet.tz_offset_min);
+  const existing = s.cart.tabCode ? s.orders.find((o) => o.id === s.cart.id) : undefined;
+  const newLines = s.cart.lines.filter((l) => l.status === 'active' && !l.sent_at);
+  const lines = s.cart.lines.map((l) => ({ ...l, sent_at: l.sent_at ?? t }));
+  const totals = computeTotals(lines.map((l) => ({ ...l })), cfg.promotions, cfg.promotionItems, t, cfg.outlet.tz_offset_min);
+  for (const l of lines) l.line_total = l.unit_price * l.qty;
   const order: Order = {
-    id: s.cart.id, outlet_id: cfg.outlet.id, device_id: cfg.device.id, short_code: await nextShortCode(),
-    business_day: businessDay(t, cfg.outlet.tz_offset_min, cfg.outlet.business_day_cutoff),
-    staff_id: s.staff!.id, staff_shift_id: s.shift?.id ?? null, drawer_session_id: s.drawer?.id ?? null,
+    id: s.cart.id, outlet_id: cfg.outlet.id, device_id: existing?.device_id ?? cfg.device.id,
+    short_code: s.cart.tabCode ?? (await nextShortCode()),
+    business_day: existing?.business_day ?? businessDay(t, cfg.outlet.tz_offset_min, cfg.outlet.business_day_cutoff),
+    staff_id: existing?.staff_id ?? s.staff!.id, staff_shift_id: existing?.staff_shift_id ?? s.shift?.id ?? null,
+    drawer_session_id: s.drawer?.id ?? existing?.drawer_session_id ?? null,
     order_type: s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status,
-    subtotal: totals.subtotal, promo_total: totals.promo_total, discount_total: totals.discount_total, total: totals.total,
-    sent_at: t, paid_at: status === 'paid' ? t : null, void_reason: null, voided_by: null, approved_by: null, voided_at: null,
-    created_at: t, updated_at: t, lines, adjustments: totals.adjustments,
+    subtotal: totals.subtotal, promo_total: totals.promo_total, discount_total: totals.discount_total, comp_total: totals.comp_total,
+    tip_total: payments.reduce((a, p) => a + (p.tip || 0), 0), total: totals.total,
+    sent_at: existing?.sent_at ?? t, paid_at: status === 'paid' ? t : null, void_reason: null, voided_by: null, approved_by: null, voided_at: null,
+    created_at: existing?.created_at ?? s.cart.created_at ?? t, updated_at: t, lines, adjustments: totals.adjustments,
     payments: payments.map((p) => ({ ...p, drawer_session_id: s.drawer?.id ?? null })),
   };
+  return { order, newLines };
+}
+
+let printHook: (kind: 'ticket' | 'receipt', order: Order, newLines: OrderLine[]) => void = () => {};
+export function setPrintHook(fn: typeof printHook) { printHook = fn; }
+
+/** Save the cart as an open tab (new tab or a new round on an existing one). */
+export async function saveToTab(): Promise<Order> {
+  const { order, newLines } = await buildOrder('open', []);
   await saveOrder(order);
+  if (newLines.length) printHook('ticket', order, newLines);
+  await clearCart();
+  return order;
+}
+
+/** Load an open tab into the cart to add a round, remove lines or take payment. */
+export async function openTab(orderId: string) {
+  const o = state.orders.find((x) => x.id === orderId && x.status === 'open');
+  if (!o) return;
+  await saveCart({ id: o.id, created_at: o.created_at, lines: o.lines.map((l) => ({ ...l })), customer_label: o.customer_label ?? '', order_type: o.order_type, tabCode: o.short_code });
+}
+
+/** Turn the cart into an order: paid now, or awaiting a bank transfer (VietQR). */
+export async function finalizeCart(status: 'paid' | 'awaiting_payment', payments: Payment[]): Promise<Order> {
+  const { order, newLines } = await buildOrder(status, payments);
+  await saveOrder(order);
+  if (newLines.length) printHook('ticket', order, newLines);
+  if (status === 'paid') printHook('receipt', order, []);
   await clearCart();
   return order;
 }
@@ -331,7 +397,7 @@ export async function finalizeCart(status: 'paid' | 'awaiting_payment', payments
 export function makePayment(method: Payment['method'], amount: number, extra: Partial<Payment> = {}): Payment {
   const confirmed = extra.status !== 'pending';
   return {
-    id: ulid(), method, amount, tendered: null, change_given: 0, reference: null, status: confirmed ? 'confirmed' : 'pending',
+    id: ulid(), method, amount, tip: 0, tendered: null, change_given: 0, reference: null, status: confirmed ? 'confirmed' : 'pending',
     confirmed_by: confirmed ? state.staff?.id ?? null : null, confirmed_at: confirmed ? Date.now() : null,
     drawer_session_id: state.drawer?.id ?? null, created_at: Date.now(), ...extra,
   };
@@ -346,6 +412,7 @@ export async function confirmTransfer(orderId: string) {
     payments: o.payments.map((p) => (p.status === 'pending' ? { ...p, status: 'confirmed', confirmed_by: state.staff!.id, confirmed_at: t } : p)),
   };
   await saveOrder(updated);
+  printHook('receipt', updated, []);
   toast(`Đã xác nhận chuyển khoản #${o.short_code}`);
 }
 
@@ -356,7 +423,8 @@ export async function voidOrder(orderId: string, reason: string, approverId: str
   const updated: Order = { ...o, status: 'void', void_reason: reason, voided_by: state.staff!.id, approved_by: approverId, voided_at: t, updated_at: t };
   await audit({ actor_id: state.staff!.id, approver_id: approverId, action: 'void', entity: 'order', entity_id: o.id, before_json: JSON.stringify({ status: o.status, total: o.total }), after_json: null, reason });
   await saveOrder(updated);
-  toast(`Đã huỷ đơn #${o.short_code}`);
+  if (state.cart.id === o.id) await clearCart();
+  toast(o.status === 'open' ? `Đã huỷ tab #${o.short_code}` : `Đã huỷ đơn #${o.short_code}`);
 }
 
 // ---------- cash in / out ----------
@@ -413,4 +481,21 @@ export async function getManagerSession(title: string): Promise<{ session: strin
     toast((e as Error).message, true);
     return null;
   }
+}
+
+/** The current cart as an order-shaped object, for printing a bill before payment. */
+export async function cartAsOrder(): Promise<Order> {
+  const s = getState();
+  const cfg = s.config!;
+  const t = cartTotals(s.cart.lines);
+  const existing = s.cart.tabCode ? s.orders.find((o) => o.id === s.cart.id) : undefined;
+  const now = Date.now();
+  return {
+    id: s.cart.id, outlet_id: cfg.outlet.id, device_id: cfg.device.id, short_code: await peekShortCode(),
+    business_day: existing?.business_day ?? today(), staff_id: existing?.staff_id ?? s.staff?.id ?? '', staff_shift_id: null, drawer_session_id: s.drawer?.id ?? null,
+    order_type: s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status: s.cart.tabCode ? 'open' : 'open',
+    subtotal: t.subtotal, promo_total: t.promo_total, discount_total: t.discount_total, comp_total: t.comp_total, total: t.total,
+    sent_at: null, paid_at: null, void_reason: null, voided_by: null, approved_by: null, voided_at: null,
+    created_at: existing?.created_at ?? s.cart.created_at ?? now, updated_at: now, lines: s.cart.lines.filter((l) => l.status === 'active'), adjustments: t.adjustments, payments: [],
+  };
 }

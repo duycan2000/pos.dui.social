@@ -4,8 +4,8 @@ import { get } from '../lib/api';
 import { Empty } from '../ui';
 import { Loading, Page, useLoad } from './common';
 
-const ACTIONS: [string, string][] = [['', 'Tất cả'], ['void', 'Huỷ đơn'], ['price_change', 'Đổi giá'], ['cash_out', 'Chi két'], ['cash_in', 'Thu két'], ['drawer_close', 'Đóng két'], ['purchase', 'Nhập hàng'], ['stocktake', 'Kiểm kê'], ['recipe_change', 'Công thức'], ['settings', 'Cài đặt'], ['staff_update', 'Nhân viên']];
-const LABEL: Record<string, string> = Object.fromEntries(ACTIONS.filter((a) => a[0]));
+const ACTIONS: [string, string][] = [['', 'Tất cả'], ['void', 'Huỷ đơn'], ['comp', 'Ly mời'], ['line_remove', 'Bỏ món đã gửi'], ['bank_confirm', 'CK tự xác nhận'], ['price_change', 'Đổi giá'], ['cash_out', 'Chi két'], ['cash_in', 'Thu két'], ['drawer_close', 'Đóng két'], ['purchase', 'Nhập hàng'], ['stocktake', 'Kiểm kê'], ['recipe_change', 'Công thức'], ['settings', 'Cài đặt'], ['staff_update', 'Nhân viên']];
+const LABEL: Record<string, string> = { ...Object.fromEntries(ACTIONS.filter((a) => a[0])), bank_match: 'Khớp CK tay', bank_ignore: 'Bỏ qua CK', drawer_close: 'Đóng két' };
 
 interface Row { id: string; at: number; action: string; entity: string | null; entity_id: string | null; actor_name: string | null; approver_name: string | null; reason: string | null; before_json: string | null; after_json: string | null }
 

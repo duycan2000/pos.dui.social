@@ -2,7 +2,9 @@
 import { useEffect, useState } from 'react';
 import type { Outlet, OutletSettings } from '../../shared/types';
 import { parseSettings } from '../../shared/util';
-import { get, put } from '../lib/api';
+import { get, post, put } from '../lib/api';
+import { runSync } from '../lib/sync';
+import { Confirm } from '../ui';
 import { useStore } from '../lib/store';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
 
@@ -48,6 +50,11 @@ export function Settings() {
       </div>
       <p className="tiny faint" style={{ margin: 0 }}>Sau khi lưu, quét thử mã QR một đơn nhỏ bằng app ngân hàng để chắc chắn đúng tài khoản.</p>
 
+      {owner && <><div className="section-title">Dữ liệu demo</div><DemoData /></>}
+
+      <div className="section-title">Webhook ngân hàng (tự xác nhận chuyển khoản)</div>
+      <WebhookHelp />
+
       <div className="section-title">Hoá đơn & màn bán</div>
       <div className="form-grid">
         <Text label="Dòng đầu hoá đơn" value={f.receipt_header} onChange={(v) => setF({ ...f, receipt_header: v || null })} />
@@ -87,5 +94,67 @@ export function Devices() {
       </div>
       <p className="tiny faint">Máy mất hoặc bị đánh cắp: khoá ở đây, máy đó không đồng bộ được nữa.</p>
     </Page>
+  );
+}
+
+function WebhookHelp() {
+  const on = useStore((s) => !!s.config?.features?.bankWebhook);
+  const url = `${location.origin}/api/webhooks/bank`;
+  return (
+    <div className="card col gap12">
+      <div className="row gap12"><span className={'dot' + (on ? '' : ' off')} /><b>{on ? 'Đang bật' : 'Chưa bật'}</b></div>
+      <ol className="small muted" style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>Cloudflare › Worker <b>dui-social-pos</b> › Settings › Variables and Secrets › thêm <b>Secret</b> tên <code>BANK_WEBHOOK_KEY</code>, giá trị là một chuỗi bí mật dài (VD 32 ký tự ngẫu nhiên).</li>
+        <li><b>SePay</b>: Tích hợp Webhook › URL <code>{url}</code>, xác thực “API Key” = chuỗi bí mật ở trên.</li>
+        <li><b>Casso</b>: Webhook › URL <code>{url}</code>, Security Key = chuỗi bí mật ở trên.</li>
+        <li>Khách chuyển khoản với nội dung “DUI A012” (đã có sẵn trong mã QR). Tiền vào đủ thì đơn tự chuyển sang Đã thanh toán; chuyển dư được ghi là tip.</li>
+      </ol>
+      <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => navigator.clipboard?.writeText(url).then(() => run(async () => 1, 'Đã chép URL'))}>Chép URL webhook</button>
+    </div>
+  );
+}
+
+function DemoData() {
+  const st = useLoad(() => get<{ seeded: boolean; items: number; orders: number; revenue: number; days: string[] }>('/api/admin/demo'));
+  const [progress, setProgress] = useState<string | null>(null);
+  const [askClear, setAskClear] = useState(false);
+  const create = async () => {
+    const days = st.data!.days;
+    setProgress('Đang tạo menu, kho, nhân viên demo…');
+    const ok = await run(() => post('/api/admin/demo/seed', { step: 'menu' }));
+    if (!ok) { setProgress(null); return; }
+    for (let i = 0; i < days.length; i++) {
+      setProgress(`Đang tạo đơn ngày ${days[i].slice(8)}/${days[i].slice(5, 7)} (${i + 1}/${days.length})…`);
+      const r = await run(() => post('/api/admin/demo/seed', { step: 'day', day: days[i] }));
+      if (!r) break;
+    }
+    setProgress(null);
+    await st.reload();
+    runSync();
+    run(async () => 1, 'Đã tạo dữ liệu demo');
+  };
+  const clear = async () => {
+    setAskClear(false);
+    setProgress('Đang xoá dữ liệu demo…');
+    await run(() => post('/api/admin/demo/clear'), 'Đã xoá sạch dữ liệu demo');
+    setProgress(null);
+    await st.reload();
+    runSync();
+  };
+  const d = st.data;
+  const month = d ? `${d.days[0].slice(5, 7)}/${d.days[0].slice(0, 4)}` : '';
+  return (
+    <div className="card col gap12">
+      {d?.seeded
+        ? <div className="banner ok">Đang có dữ liệu demo: {d.items} món, {d.orders} đơn tháng {month}, doanh thu {d.revenue.toLocaleString('vi-VN')} ₫.</div>
+        : <p className="small muted" style={{ margin: 0 }}>Tạo menu bar mẫu (17 món có công thức, nguyên liệu, nhà cung cấp, chi phí tháng), 2 nhân viên mẫu (Linh — quản lý, PIN 111111; Nam — nhân viên, PIN 2222) và 10–15 đơn mỗi ngày cho cả tháng {month}. Xem kết quả ở Tổng quan, Báo cáo, Giá vốn, Kho (chọn “Tháng trước”).</p>}
+      {progress && <div className="banner info" style={{ alignItems: 'center' }}><span className="spinner" />{progress}</div>}
+      <div className="row wrap">
+        <button className="btn primary" disabled={!d || d.seeded || !!progress} onClick={create}>Tạo dữ liệu demo</button>
+        <button className="btn danger" disabled={!d?.seeded || !!progress} onClick={() => setAskClear(true)}>Xoá sạch dữ liệu demo</button>
+      </div>
+      <p className="tiny faint" style={{ margin: 0 }}>Mọi thứ demo có mã bắt đầu bằng DEMO. Nút xoá chỉ xoá đúng các dữ liệu đó, không đụng tới món, đơn hay cài đặt thật của bạn. Nếu bạn sửa món demo, món đó vẫn bị xoá cùng.</p>
+      {askClear && <Confirm title="Xoá sạch dữ liệu demo?" text="Món, nguyên liệu, nhân viên, đơn và chi phí demo sẽ bị xoá vĩnh viễn. Dữ liệu thật được giữ nguyên." okText="Xoá demo" danger onCancel={() => setAskClear(false)} onOk={clear} />}
+    </div>
   );
 }

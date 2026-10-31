@@ -1,23 +1,33 @@
-// S10–S14 — choose payment method; cash with change, VietQR (local QR, manual confirm), card reference, mixed.
+// S10–S14 — payment (Toast-style): big amount, tip, method cards, cash keypad with change,
+// VietQR with automatic bank confirmation, card reference, mixed payments.
 import QRCode from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cashSuggestions } from '../../shared/pricing';
 import type { Payment, PayMethod } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { vietQrPayload } from '../../shared/vietqr';
-import { cartTotals, finalizeCart, makePayment, navigate, peekShortCode, setState, toast, useStore } from '../lib/store';
-import { Icon, MoneyInput, Sheet, TopBar } from '../ui';
+import { api } from '../lib/api';
+import { kickDrawer, printerSettings } from '../lib/printer';
+import { preBillDoc, tryPrint } from '../lib/receipts';
+import { cartAsOrder, cartTotals, finalizeCart, makePayment, navigate, optionLabel, peekShortCode, setState, toast, useStore } from '../lib/store';
+import { runSync } from '../lib/sync';
+import { Icon, Keypad, MoneyInput, Sheet, TopBar } from '../ui';
 
 type Step = 'methods' | 'cash' | 'vietqr' | 'card' | 'mixed';
 
 export default function Checkout() {
   const cart = useStore((s) => s.cart);
+  const cfg = useStore((s) => s.config)!;
   const [step, setStep] = useState<Step>('methods');
   const [code, setCode] = useState('');
+  const [tip, setTip] = useState(0);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { peekShortCode().then(setCode); }, []);
-  const due = cartTotals(cart.lines).total;
-  useEffect(() => { if (!cart.lines.length) navigate('order'); }, [cart.lines.length]);
+  useEffect(() => { peekShortCode().then(setCode); }, [cart.id]);
+  // A tab may have rounds added on the other device: refresh before taking money.
+  useEffect(() => { if (cart.tabCode && navigator.onLine) runSync(); }, []); // eslint-disable-line
+  const t = cartTotals(cart.lines);
+  const due = t.total;
+  useEffect(() => { if (!cart.lines.some((l) => l.status === 'active')) navigate('order'); }, [cart.lines]);
 
   const finish = async (status: 'paid' | 'awaiting_payment', payments: Payment[], change = 0) => {
     if (busy) return;
@@ -25,62 +35,115 @@ export default function Checkout() {
     try {
       const order = await finalizeCart(status, payments);
       if (status === 'paid') {
+        if (payments.some((p) => p.method === 'cash') && printerSettings().openDrawer && printerSettings().mode !== 'none') kickDrawer().catch(() => {});
         setState({ lastPaid: { order, change } });
         navigate('done');
       } else {
-        toast(`Đã lưu #${order.short_code} — chờ xác nhận chuyển khoản`);
+        toast(`Đã lưu #${order.short_code} — chờ chuyển khoản`);
         navigate('order');
       }
     } finally { setBusy(false); }
   };
-
-  const back = () => (step === 'methods' ? navigate('cart') : setStep('methods'));
-  const title = { methods: `Thanh toán #${code}`, cash: 'Tiền mặt', vietqr: 'VietQR', card: 'Thẻ', mixed: 'Thanh toán kết hợp' }[step];
+  const back = () => (step === 'methods' ? navigate(window.matchMedia('(min-width: 980px)').matches ? 'order' : 'cart') : setStep('methods'));
+  const title = { methods: 'Thanh toán', cash: 'Tiền mặt', vietqr: 'Chuyển khoản VietQR', card: 'Thẻ', mixed: 'Kết hợp nhiều cách' }[step];
+  const ref = 'DUI ' + code.replace('-', '');
 
   return (
-    <div className="screen">
-      <TopBar title={title} onBack={back} />
-      {step === 'methods' && (
-        <div className="scroll pad col gap12">
-          <div className="center row" style={{ padding: '16px 0' }}><span className="huge mono">{vnd(due)}</span></div>
-          <button className="btn lg block" style={{ justifyContent: 'flex-start' }} onClick={() => setStep('cash')}><Icon name="cash" />Tiền mặt</button>
-          <button className="btn lg block" style={{ justifyContent: 'flex-start' }} onClick={() => setStep('vietqr')}><Icon name="qr" />Chuyển khoản VietQR</button>
-          <button className="btn lg block" style={{ justifyContent: 'flex-start' }} onClick={() => setStep('card')}><Icon name="card" />Thẻ (máy POS ngân hàng)</button>
-          <button className="btn lg block" style={{ justifyContent: 'flex-start' }} onClick={() => setStep('mixed')}><Icon name="split" />Kết hợp nhiều cách</button>
+    <div className="screen wide">
+      <TopBar title={title} sub={`#${code}${cart.customer_label ? ' · ' + cart.customer_label : ''}`} onBack={back} />
+      <div className="scroll">
+        <div className="checkout">
+          <section className="checkout-summary card">
+            <div className="card-title">Đơn #{code}</div>
+            {cart.lines.filter((l) => l.status === 'active').map((l) => (
+              <div key={l.id} className="kv small">
+                <span>{l.qty}× {l.item_name}{optionLabel(l.modifiers) ? <span className="muted"> · {optionLabel(l.modifiers)}</span> : null}</span>
+                <span className="mono">{l.comp ? <span style={{ color: 'var(--violet)' }}>Mời</span> : vnd(l.unit_price * l.qty, false)}</span>
+              </div>
+            ))}
+            <hr className="sep" />
+            {t.promo_total > 0 && <div className="kv small accent"><span>Mua 1 tặng 1</span><span className="mono">−{vnd(t.promo_total)}</span></div>}
+            {t.comp_total > 0 && <div className="kv small" style={{ color: 'var(--violet)' }}><span>Mời</span><span className="mono">−{vnd(t.comp_total)}</span></div>}
+            <div className="kv total"><span>Tổng</span><span className="mono">{vnd(due)}</span></div>
+          </section>
+
+          <section className="checkout-pay">
+            {step === 'methods' && (
+              <div className="col gap16">
+                <div className="amount-card">
+                  <div className="label">Cần thu</div>
+                  <div className="value">{vnd(due + tip)}</div>
+                  {tip > 0 && <div className="small muted">gồm tip {vnd(tip)}</div>}
+                </div>
+                <button className="btn outline" onClick={async () => { const err = await tryPrint(await preBillDoc(cfg, await cartAsOrder())); toast(err ?? 'Đã in bill cho khách', !!err); }}>
+                  <Icon name="printer" size={20} />In bill cho khách
+                </button>
+                <TipPicker due={due} tip={tip} onChange={setTip} />
+                <div className="methods">
+                  <button className="method" onClick={() => setStep('cash')}><span className="ico"><Icon name="cash" /></span><span>Tiền mặt<br /><small>Tính tiền thối · tip từ tiền thối</small></span></button>
+                  <button className="method" onClick={() => setStep('vietqr')}><span className="ico" style={{ background: 'var(--info-soft)', color: 'var(--info)' }}><Icon name="qr" /></span><span>VietQR<br /><small>Mã QR có sẵn số tiền</small></span></button>
+                  <button className="method" onClick={() => setStep('card')}><span className="ico" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}><Icon name="card" /></span><span>Thẻ<br /><small>Quẹt trên máy POS ngân hàng</small></span></button>
+                  <button className="method" onClick={() => setStep('mixed')}><span className="ico" style={{ background: 'var(--violet-soft)', color: 'var(--violet)' }}><Icon name="split" /></span><span>Kết hợp<br /><small>Một phần tiền mặt, một phần CK</small></span></button>
+                </div>
+              </div>
+            )}
+            {step === 'cash' && <CashPay due={due} busy={busy} onPay={(tendered, cashTip) => finish('paid', [makePayment('cash', due, { tendered, tip: cashTip, change_given: tendered - due - cashTip })], tendered - due - cashTip)} />}
+            {step === 'vietqr' && (
+              <QrPay due={due} tip={tip} code={code} busy={busy}
+                onReceived={(extra) => finish('paid', [makePayment('vietqr', due, { tip: extra?.tip ?? tip, reference: ref, bank_txn_id: extra?.txnId ?? null })])}
+                onWait={() => finish('awaiting_payment', [makePayment('vietqr', due, { status: 'pending', reference: ref })])} />
+            )}
+            {step === 'card' && <CardPay total={due + tip} busy={busy} onPay={(r) => finish('paid', [makePayment('card', due, { tip, reference: r || null })])} />}
+            {step === 'mixed' && <MixedPay due={due} code={code} busy={busy} onPay={(parts) => finish('paid', parts, parts.reduce((s, p) => s + p.change_given, 0))} />}
+          </section>
         </div>
-      )}
-      {step === 'cash' && <CashPay due={due} busy={busy} onPay={(tendered) => finish('paid', [makePayment('cash', due, { tendered, change_given: tendered - due })], tendered - due)} />}
-      {step === 'vietqr' && (
-        <QrPay amount={due} code={code} busy={busy}
-          onReceived={() => finish('paid', [makePayment('vietqr', due, { reference: 'DUI ' + code.replace('-', '') })])}
-          onWait={() => finish('awaiting_payment', [makePayment('vietqr', due, { status: 'pending', reference: 'DUI ' + code.replace('-', '') })])}
-          onCancel={() => setStep('methods')} />
-      )}
-      {step === 'card' && <CardPay due={due} busy={busy} onPay={(ref) => finish('paid', [makePayment('card', due, { reference: ref || null })])} />}
-      {step === 'mixed' && <MixedPay due={due} code={code} busy={busy} onPay={(parts) => finish('paid', parts, parts.reduce((s, p) => s + p.change_given, 0))} />}
+      </div>
     </div>
   );
 }
 
-function CashPay({ due, onPay, busy }: { due: number; onPay: (tendered: number) => void; busy: boolean }) {
-  const [got, setGot] = useState(0);
-  const change = got - due;
+function TipPicker({ due, tip, onChange }: { due: number; tip: number; onChange: (v: number) => void }) {
+  const [custom, setCustom] = useState(false);
+  const opts = [0, 0.05, 0.1, 0.15].map((p) => ({ p, v: Math.round((due * p) / 1000) * 1000 }));
   return (
-    <>
-      <div className="scroll pad col gap16">
-        <div className="kv big"><span className="muted">Cần thu</span><span className="mono">{vnd(due)}</span></div>
-        <MoneyInput label="Khách đưa" value={got} onChange={setGot} autoFocus />
-        <div className="opts">
-          {cashSuggestions(due).map((v) => <button key={v} className={'opt' + (got === v ? ' on' : '')} onClick={() => setGot(v)}>{v === due ? 'Vừa đủ' : vndShort(v)}</button>)}
-        </div>
-        <div className="card center row col" style={{ gap: 4 }}>
-          <span className="muted">Tiền thối</span>
-          <span className={'huge mono ' + (change < 0 ? 'danger' : 'accent')}>{got ? vnd(Math.max(0, change)) : '—'}</span>
-          {got > 0 && change < 0 && <span className="danger small">Còn thiếu {vnd(-change)}</span>}
-        </div>
+    <div className="col" style={{ gap: 8 }}>
+      <span className="small muted"><Icon name="heart" size={14} /> Tip (cho thẻ và chuyển khoản; tiền mặt chọn ở bước sau)</span>
+      <div className="opts">
+        {opts.map(({ p, v }) => (
+          <button key={p} className={'opt' + (!custom && tip === v ? ' on' : '')} onClick={() => { setCustom(false); onChange(v); }}>{p === 0 ? 'Không tip' : `${p * 100}% · ${vndShort(v)}`}</button>
+        ))}
+        <button className={'opt' + (custom ? ' on' : '')} onClick={() => setCustom(true)}>Khác</button>
       </div>
-      <div className="cartbar"><button className="btn primary lg block" disabled={busy || got < due} onClick={() => onPay(got)}>Xác nhận đã thu</button></div>
-    </>
+      {custom && <MoneyInput value={tip} onChange={onChange} placeholder="Số tiền tip" autoFocus />}
+    </div>
+  );
+}
+
+function CashPay({ due, onPay, busy }: { due: number; onPay: (tendered: number, tip: number) => void; busy: boolean }) {
+  const [got, setGot] = useState(0);
+  const [keepTip, setKeepTip] = useState(false);
+  const change = got - due;
+  const tip = keepTip && change > 0 ? change : 0;
+  return (
+    <div className="col gap16">
+      <div className="row gap12">
+        <div className="card grow col" style={{ gap: 2 }}><span className="small muted">Cần thu</span><span className="big mono">{vnd(due)}</span></div>
+        <div className="card grow col" style={{ gap: 2 }}><span className="small muted">Khách đưa</span><span className="big mono accent">{got ? vnd(got) : '—'}</span></div>
+      </div>
+      <div className="opts">
+        {cashSuggestions(due).map((v) => <button key={v} className={'opt' + (got === v ? ' on' : '')} onClick={() => setGot(v)}>{v === due ? 'Vừa đủ' : vndShort(v)}</button>)}
+      </div>
+      <Keypad value={got} onChange={setGot} />
+      <div className="card col center" style={{ alignItems: 'center', gap: 4 }}>
+        <span className="muted small">{tip ? 'Tiền thối giữ làm tip' : 'Tiền thối'}</span>
+        <span className={'huge mono ' + (change < 0 ? 'danger' : tip ? 'ok' : 'accent')}>{got ? vnd(Math.max(0, change - tip)) : '—'}</span>
+        {got > 0 && change < 0 && <span className="danger small">Còn thiếu {vnd(-change)}</span>}
+        {change > 0 && (
+          <label className="check small"><input type="checkbox" checked={keepTip} onChange={(e) => setKeepTip(e.target.checked)} /> Khách để lại tiền thối làm tip ({vnd(change)})</label>
+        )}
+      </div>
+      <button className="btn primary xl block" disabled={busy || got < due} onClick={() => onPay(got, tip)}>Xác nhận đã thu {got >= due ? vnd(got) : ''}</button>
+    </div>
   );
 }
 
@@ -91,47 +154,62 @@ export function QrImage({ amount, code }: { amount: number; code: string }) {
   useEffect(() => {
     if (!ready) return;
     const payload = vietQrPayload({ bankBin: outlet.vietqr_bank_bin!, account: outlet.vietqr_account!, amount, purpose: 'DUI ' + code.replace('-', '') });
-    QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 1, width: 520 }).then(setSrc).catch(() => setSrc(''));
+    QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 1, width: 540 }).then(setSrc).catch(() => setSrc(''));
   }, [amount, code, ready, outlet.vietqr_bank_bin, outlet.vietqr_account]);
-  if (!ready) return <div className="banner danger">Chưa cài tài khoản VietQR. Vào Quản trị › Cài đặt để nhập mã ngân hàng (BIN) và số tài khoản.</div>;
+  if (!ready) return <div className="banner danger"><Icon name="warn" size={18} />Chưa cài tài khoản VietQR. Vào Quản trị › Cài đặt để nhập ngân hàng và số tài khoản.</div>;
   return (
-    <div className="col center" style={{ alignItems: 'center' }}>
+    <div className="col center" style={{ alignItems: 'center', gap: 10 }}>
       <div className="qr">{src ? <img src={src} alt={`Mã VietQR ${vnd(amount)}`} /> : null}</div>
-      <div className="small muted center row" style={{ textAlign: 'center' }}>{outlet.vietqr_account_name || ''} · {outlet.vietqr_account}<br />Nội dung: DUI {code.replace('-', '')}</div>
+      <div className="small muted" style={{ textAlign: 'center' }}>{outlet.vietqr_account_name || ''} · {outlet.vietqr_account}<br />Nội dung chuyển khoản: <b style={{ color: 'var(--text)' }}>DUI {code.replace('-', '')}</b></div>
     </div>
   );
 }
 
-function QrPay({ amount, code, onReceived, onWait, onCancel, busy }: { amount: number; code: string; onReceived: () => void; onWait: () => void; onCancel: () => void; busy: boolean }) {
+function QrPay({ due, tip, code, onReceived, onWait, busy }: { due: number; tip: number; code: string; onReceived: (extra?: { tip: number; txnId: string }) => void; onWait: () => void; busy: boolean }) {
+  const cfg = useStore((s) => s.config)!;
+  const online = useStore((s) => s.net.online);
+  const auto = !!cfg.features?.bankWebhook && online;
+  const done = useRef(false);
+  useEffect(() => {
+    if (!auto || !code) return;
+    const timer = setInterval(async () => {
+      if (done.current) return;
+      try {
+        const r = await api<{ found: boolean; txn?: { id: string; amount: number } }>('GET', `/api/bank/check?code=${encodeURIComponent(code)}&amount=${due}`);
+        if (r.found && r.txn && !done.current) {
+          done.current = true;
+          toast(`Đã nhận ${vnd(r.txn.amount)} qua ngân hàng`);
+          onReceived({ tip: Math.max(0, r.txn.amount - due), txnId: r.txn.id });
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [auto, code, due]); // eslint-disable-line
   return (
-    <>
-      <div className="scroll pad col gap12">
-        <div className="center row"><span className="huge mono">{vnd(amount)}</span></div>
-        <QrImage amount={amount} code={code} />
-        <p className="small muted" style={{ textAlign: 'center' }}>Kiểm tra app ngân hàng, thấy tiền vào đúng số và nội dung thì bấm “Đã nhận tiền”. Khách chuyển chậm thì bấm “Chờ xác nhận” để bán tiếp.</p>
+    <div className="col gap16">
+      <div className="amount-card" style={{ paddingBottom: 0 }}>
+        <div className="label">Quét để chuyển khoản</div>
+        <div className="value">{vnd(due + tip)}</div>
       </div>
-      <div className="cartbar col">
-        <button className="btn ok lg block" disabled={busy} onClick={onReceived}><Icon name="check" />Đã nhận tiền</button>
-        <div className="row">
-          <button className="btn grow" onClick={onCancel}>Huỷ</button>
-          <button className="btn grow" disabled={busy} onClick={onWait}>Chờ xác nhận</button>
-        </div>
-      </div>
-    </>
+      <QrImage amount={due + tip} code={code} />
+      {auto
+        ? <div className="banner info" style={{ alignItems: 'center' }}><span className="spinner" /> Đang chờ tiền vào tài khoản — tự xác nhận khi ngân hàng báo.</div>
+        : <p className="small muted" style={{ textAlign: 'center', margin: 0 }}>Kiểm tra app ngân hàng: đúng số tiền và nội dung thì bấm “Đã nhận tiền”.</p>}
+      <button className="btn ok xl block" disabled={busy} onClick={() => { done.current = true; onReceived(); }}><Icon name="check" />Đã nhận tiền</button>
+      <button className="btn block" disabled={busy} onClick={() => { done.current = true; onWait(); }}>Khách chuyển sau — lưu đơn chờ</button>
+    </div>
   );
 }
 
-function CardPay({ due, onPay, busy }: { due: number; onPay: (ref: string) => void; busy: boolean }) {
+function CardPay({ total, onPay, busy }: { total: number; onPay: (ref: string) => void; busy: boolean }) {
   const [ref, setRef] = useState('');
   return (
-    <>
-      <div className="scroll pad col gap16">
-        <div className="center row"><span className="huge mono">{vnd(due)}</span></div>
-        <p className="muted">Quẹt thẻ trên máy POS của ngân hàng, sau đó ghi nhận ở đây. Không lưu số thẻ.</p>
-        <label className="field"><span>Mã chuẩn chi trên slip (không bắt buộc)</span><input className="input" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="VD: 123456" /></label>
-      </div>
-      <div className="cartbar"><button className="btn primary lg block" disabled={busy} onClick={() => onPay(ref.trim())}>Đã thanh toán</button></div>
-    </>
+    <div className="col gap16">
+      <div className="amount-card"><div className="label">Nhập trên máy POS ngân hàng</div><div className="value">{vnd(total)}</div></div>
+      <p className="muted small" style={{ margin: 0 }}>Quẹt thẻ trên máy POS của ngân hàng rồi ghi nhận ở đây. App không lưu số thẻ.</p>
+      <label className="field"><span>Mã chuẩn chi trên slip (không bắt buộc)</span><input className="input" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="VD: 123456" inputMode="numeric" /></label>
+      <button className="btn primary xl block" disabled={busy} onClick={() => onPay(ref.trim())}>Đã thanh toán</button>
+    </div>
   );
 }
 
@@ -142,30 +220,29 @@ function MixedPay({ due, code, onPay, busy }: { due: number; code: string; onPay
   const remaining = due - paid;
   const names: Record<PayMethod, string> = { cash: 'Tiền mặt', vietqr: 'VietQR', card: 'Thẻ' };
   return (
-    <>
-      <div className="scroll pad col gap12">
-        <div className="kv big"><span className="muted">Tổng</span><span className="mono">{vnd(due)}</span></div>
+    <div className="col gap16">
+      <div className="amount-card"><div className="label">Còn lại</div><div className={'value ' + (remaining === 0 ? 'ok' : '')}>{vnd(remaining)}</div><div className="small muted">trên tổng {vnd(due)}</div></div>
+      {parts.length > 0 && (
         <div className="list">
           {parts.map((p) => (
             <div key={p.id} className="li">
               <span className="grow">{names[p.method]}{p.method === 'cash' && p.change_given ? <span className="small muted"> · thối {vnd(p.change_given)}</span> : null}</span>
-              <span className="mono">{vnd(p.amount)}</span>
+              <span className="mono semibold">{vnd(p.amount)}</span>
               <button className="iconbtn ghost" aria-label="Bỏ phần này" onClick={() => setParts(parts.filter((x) => x.id !== p.id))}><Icon name="close" size={18} /></button>
             </div>
           ))}
         </div>
-        <div className={'kv big ' + (remaining === 0 ? 'ok' : '')}><span>Còn lại</span><span className="mono">{vnd(remaining)}</span></div>
-        {remaining > 0 && (
-          <div className="row">
-            <button className="btn grow" onClick={() => setAdding('cash')}><Icon name="cash" size={18} />Tiền mặt</button>
-            <button className="btn grow" onClick={() => setAdding('vietqr')}><Icon name="qr" size={18} />VietQR</button>
-            <button className="btn grow" onClick={() => setAdding('card')}><Icon name="card" size={18} />Thẻ</button>
-          </div>
-        )}
-      </div>
-      <div className="cartbar"><button className="btn primary lg block" disabled={busy || remaining !== 0 || !parts.length} onClick={() => onPay(parts)}>Hoàn tất</button></div>
+      )}
+      {remaining > 0 && (
+        <div className="methods" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+          <button className="method" style={{ minHeight: 84 }} onClick={() => setAdding('cash')}><span className="ico"><Icon name="cash" /></span>Tiền mặt</button>
+          <button className="method" style={{ minHeight: 84 }} onClick={() => setAdding('vietqr')}><span className="ico" style={{ background: 'var(--info-soft)', color: 'var(--info)' }}><Icon name="qr" /></span>VietQR</button>
+          <button className="method" style={{ minHeight: 84 }} onClick={() => setAdding('card')}><span className="ico" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}><Icon name="card" /></span>Thẻ</button>
+        </div>
+      )}
+      <button className="btn primary xl block" disabled={busy || remaining !== 0 || !parts.length} onClick={() => onPay(parts)}>Hoàn tất</button>
       {adding && <PartSheet method={adding} max={remaining} code={code} onClose={() => setAdding(null)} onAdd={(p) => { setParts([...parts, p]); setAdding(null); }} />}
-    </>
+    </div>
   );
 }
 
@@ -183,7 +260,7 @@ function PartSheet({ method, max, code, onAdd, onClose }: { method: PayMethod; m
   return (
     <Sheet onClose={onClose}>
       <h2>{method === 'cash' ? 'Phần tiền mặt' : method === 'vietqr' ? 'Phần chuyển khoản' : 'Phần thẻ'}</h2>
-      <div className="col gap12">
+      <div className="col gap12 mt16">
         <MoneyInput label={`Số tiền (tối đa ${vnd(max)})`} value={amount} onChange={setAmount} />
         {method === 'cash' && <MoneyInput label="Khách đưa (để trống nếu vừa đủ)" value={tendered} onChange={setTendered} />}
         {method === 'cash' && tendered > amount && <div className="kv"><span className="muted">Tiền thối</span><span className="mono accent bold">{vnd(tendered - amount)}</span></div>}
@@ -194,3 +271,4 @@ function PartSheet({ method, max, code, onAdd, onClose }: { method: PayMethod; m
     </Sheet>
   );
 }
+

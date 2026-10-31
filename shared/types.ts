@@ -69,6 +69,7 @@ export interface PosConfig {
   itemModifierGroups: ItemModifierGroup[];
   promotions: Promotion[];
   promotionItems: PromotionItem[];
+  features?: { bankWebhook: boolean };
 }
 
 export type OrderStatus = 'open' | 'awaiting_payment' | 'paid' | 'void';
@@ -89,6 +90,12 @@ export interface OrderLine {
   removed_by?: string | null;
   removed_reason?: string | null;
   sort: number;
+  /** Ly mời: free for the guest, still deducted from stock and counted as cost. */
+  comp?: number;
+  comp_reason?: string | null;
+  comp_by?: string | null;
+  /** Set once the line has been saved to a tab or an order (then removal needs a reason). */
+  sent_at?: number | null;
 }
 
 export interface OrderAdjustment {
@@ -105,7 +112,11 @@ export interface OrderAdjustment {
 export interface Payment {
   id: string;
   method: PayMethod;
+  /** Applied to the bill (excludes tip). */
   amount: number;
+  /** Tip on top of the bill, kept out of revenue. Cash tips stay in the drawer. */
+  tip?: number;
+  bank_txn_id?: string | null;
   tendered: number | null;
   change_given: number;
   reference: string | null;
@@ -131,6 +142,8 @@ export interface Order {
   subtotal: number;
   promo_total: number;
   discount_total: number;
+  comp_total?: number;
+  tip_total?: number;
   total: number;
   sent_at: number | null;
   paid_at: number | null;
@@ -212,6 +225,9 @@ export interface ZReport {
   counted_cash: number | null;
   difference: number | null;
   pending_vietqr: number;
+  comp_value: number;
+  tips: Record<PayMethod, number>;
+  open_tabs: number;
 }
 
 export const DENOMINATIONS = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];

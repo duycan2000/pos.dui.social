@@ -1,10 +1,11 @@
 // Offline sync: devices push records from their outbox and pull config + recent activity.
-import type { CashMovement, DrawerSession, Order, StaffShift, SyncRecord, ZReport } from '../shared/types';
+import { computeTotals } from '../shared/pricing';
+import type { CashMovement, DrawerSession, Order, OrderLine, Promotion, PromotionItem, StaffShift, SyncRecord, ZReport } from '../shared/types';
 import { addDays, businessDay, ulid } from '../shared/util';
 import { configSnapshot } from './auth';
 import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt, upsertStmt } from './http';
 
-const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at'];
+const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at'];
 const DRAWER_COLS = ['id', 'outlet_id', 'business_day', 'status', 'opened_by', 'opened_at', 'opening_float', 'opening_count_json', 'device_id', 'note', 'created_at', 'updated_at'];
 const SHIFT_COLS = ['id', 'staff_id', 'outlet_id', 'device_id', 'drawer_session_id', 'business_day', 'started_at', 'ended_at', 'created_at', 'updated_at'];
 const CASH_COLS = ['id', 'drawer_session_id', 'business_day', 'direction', 'amount', 'reason', 'note', 'photo_key', 'purchase_id', 'staff_id', 'approved_by', 'device_id', 'created_at', 'updated_at'];
@@ -34,12 +35,12 @@ export async function pull(c: Ctx) {
 export async function loadOrders(env: Env, where: string, ...args: unknown[]): Promise<Order[]> {
   const orders = await all<any>(env, `SELECT o.* FROM sale_order o ${where} ORDER BY o.created_at LIMIT 2000`, ...args);
   if (!orders.length) return [];
-  const ids = orders.map((o) => o.id);
-  const ph = ids.map(() => '?').join(',');
+  // Sub-select instead of an id list: D1 allows at most 100 bound parameters per query.
+  const sub = `SELECT o.id FROM sale_order o ${where} ORDER BY o.created_at LIMIT 2000`;
   const [lines, adjs, pays] = await Promise.all([
-    all<any>(env, `SELECT * FROM order_line WHERE order_id IN (${ph}) ORDER BY sort`, ...ids),
-    all<any>(env, `SELECT * FROM order_adjustment WHERE order_id IN (${ph})`, ...ids),
-    all<any>(env, `SELECT * FROM payment WHERE order_id IN (${ph}) ORDER BY created_at`, ...ids),
+    all<any>(env, `SELECT * FROM order_line WHERE order_id IN (${sub}) ORDER BY sort`, ...args),
+    all<any>(env, `SELECT * FROM order_adjustment WHERE order_id IN (${sub})`, ...args),
+    all<any>(env, `SELECT * FROM payment WHERE order_id IN (${sub}) ORDER BY created_at`, ...args),
   ]);
   return orders.map((o) => ({
     ...o,
@@ -85,42 +86,106 @@ async function pushDrawer(c: Ctx, d: DrawerSession) {
 async function pushOrder(c: Ctx, o: Order) {
   const env = c.env;
   const existing = await first<{ status: string; stock_applied: number; short_code: string }>(env, 'SELECT status,stock_applied,short_code FROM sale_order WHERE id=?', o.id);
-  // Paid orders are immutable: the only allowed changes are awaiting→paid, awaiting→void and paid→void.
+  // Paid orders are immutable: the only allowed changes are open→*, awaiting→paid/void and paid→void.
   if (existing) {
     if (existing.status === 'void') return;
-    if (existing.status === 'paid' && o.status !== 'void') return;
+    if (existing.status === 'paid' && o.status !== 'void') {
+      if (o.status === 'open') throw new Error(`Tab #${existing.short_code} đã được thanh toán trên máy khác — các món thêm sau không được lưu`);
+      return;
+    }
   }
   let shortCode = existing?.short_code ?? o.short_code;
   if (!existing) {
     const clash = await first(env, 'SELECT id FROM sale_order WHERE outlet_id=? AND business_day=? AND short_code=? AND id<>?', c.device!.outlet_id, o.business_day, shortCode, o.id);
     if (clash) shortCode = `${shortCode}-${o.id.slice(-3)}`;
   }
-  const row = { ...o, outlet_id: c.device!.outlet_id, device_id: o.device_id || c.device!.id, short_code: shortCode, stock_applied: existing?.stock_applied ?? 0, cost_total: 0, updated_at: now() };
+  const tipTotal = (o.payments || []).filter((p) => p.status === 'confirmed').reduce((s, p) => s + (p.tip || 0), 0);
+  const row = { ...o, outlet_id: c.device!.outlet_id, device_id: o.device_id || c.device!.id, short_code: shortCode, stock_applied: existing?.stock_applied ?? 0, cost_total: 0, comp_total: o.comp_total ?? 0, tip_total: tipTotal, updated_at: now() };
   const stmts: D1PreparedStatement[] = [];
   if (existing) {
-    stmts.push(stmt(env, `UPDATE sale_order SET status=?, paid_at=?, void_reason=?, voided_by=?, approved_by=?, voided_at=?, customer_label=?, subtotal=?, promo_total=?, discount_total=?, total=?, updated_at=? WHERE id=?`,
-      o.status, o.paid_at, o.void_reason, o.voided_by, o.approved_by, o.voided_at, o.customer_label, o.subtotal, o.promo_total, o.discount_total, o.total, row.updated_at, o.id));
+    stmts.push(stmt(env, `UPDATE sale_order SET status=?, paid_at=?, void_reason=?, voided_by=?, approved_by=?, voided_at=?, customer_label=?, order_type=?, subtotal=?, promo_total=?, discount_total=?, comp_total=?, tip_total=?, total=?, drawer_session_id=COALESCE(?, drawer_session_id), updated_at=? WHERE id=?`,
+      o.status, o.paid_at, o.void_reason, o.voided_by, o.approved_by, o.voided_at, o.customer_label, o.order_type, o.subtotal, o.promo_total, o.discount_total, row.comp_total, tipTotal, o.total, o.drawer_session_id, row.updated_at, o.id));
   } else {
     stmts.push(upsertStmt(env, 'sale_order', row, ORDER_COLS));
   }
-  // Lines/adjustments are replaced while the order is not yet paid on the server (or on first arrival).
-  if (!existing || existing.status === 'awaiting_payment' || existing.status === 'open') {
-    stmts.push(stmt(env, 'DELETE FROM order_line WHERE order_id=?', o.id));
-    stmts.push(stmt(env, 'DELETE FROM order_adjustment WHERE order_id=?', o.id));
+  const editable = !existing || existing.status === 'awaiting_payment' || existing.status === 'open';
+  if (editable) {
+    // Lines are merged by id and never deleted, so two devices adding rounds to the same tab both survive.
     o.lines.forEach((l, i) => stmts.push(stmt(env,
-      'INSERT INTO order_line (id,order_id,item_id,item_name,unit_price,qty,modifiers_json,line_total,line_cost,note,status,removed_by,removed_reason,sort) VALUES (?,?,?,?,?,?,?,?,0,?,?,?,?,?)',
-      l.id, o.id, l.item_id, l.item_name, l.unit_price, l.qty, JSON.stringify(l.modifiers || []), l.line_total, l.note, l.status, l.removed_by ?? null, l.removed_reason ?? null, l.sort ?? i)));
+      'INSERT OR REPLACE INTO order_line (id,order_id,item_id,item_name,unit_price,qty,modifiers_json,line_total,line_cost,note,status,removed_by,removed_reason,sort,comp,comp_reason,comp_by,sent_at) VALUES (?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?)',
+      l.id, o.id, l.item_id, l.item_name, l.unit_price, l.qty, JSON.stringify(l.modifiers || []), l.unit_price * l.qty, l.note, l.status, l.removed_by ?? null, l.removed_reason ?? null, l.sort ?? i,
+      l.comp ? 1 : 0, l.comp_reason ?? null, l.comp_by ?? null, l.sent_at ?? null)));
+    stmts.push(stmt(env, 'DELETE FROM order_adjustment WHERE order_id=?', o.id));
     for (const a of o.adjustments) stmts.push(stmt(env,
       'INSERT INTO order_adjustment (id,order_id,order_line_id,kind,promotion_id,amount,reason,staff_id,approved_by) VALUES (?,?,?,?,?,?,?,?,?)',
       a.id, o.id, a.order_line_id, a.kind, a.promotion_id, a.amount, a.reason, a.staff_id, a.approved_by));
   }
-  for (const p of o.payments) stmts.push(stmt(env,
-    'INSERT OR REPLACE INTO payment (id,order_id,drawer_session_id,method,amount,tendered,change_given,reference,status,confirmed_by,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    p.id, o.id, p.drawer_session_id ?? o.drawer_session_id, p.method, p.amount, p.tendered, p.change_given ?? 0, p.reference, p.status, p.confirmed_by, p.confirmed_at, p.created_at));
+  for (const p of o.payments) {
+    stmts.push(stmt(env,
+      'INSERT OR REPLACE INTO payment (id,order_id,drawer_session_id,method,amount,tip,tendered,change_given,reference,status,confirmed_by,confirmed_at,bank_txn_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      p.id, o.id, p.drawer_session_id ?? o.drawer_session_id, p.method, p.amount, p.tip ?? 0, p.tendered, p.change_given ?? 0, p.reference, p.status, p.confirmed_by, p.confirmed_at, p.bank_txn_id ?? null, p.created_at));
+    if (p.bank_txn_id) stmts.push(stmt(env, "UPDATE bank_txn SET status='matched', order_id=?, updated_at=? WHERE id=?", o.id, now(), p.bank_txn_id));
+  }
   await batch(env, stmts);
 
+  // A tab still open after a merge: totals come from the merged lines, not from one device's copy.
+  if (o.status === 'open' && existing?.status === 'open') await recomputeTotals(env, o.id);
+  if (o.status === 'awaiting_payment') await matchWaitingTransfer(env, o.id);
   if (o.status === 'paid' && !row.stock_applied) await applyStock(env, o.id, -1, 'sale');
   if (o.status === 'void' && row.stock_applied) await applyStock(env, o.id, +1, 'void');
+}
+
+/** Recompute line totals, BOGO and comps for an order from what is stored on the server. */
+export async function recomputeTotals(env: Env, orderId: string) {
+  const [lines, promos, promoItems, outlet] = await Promise.all([
+    all<any>(env, 'SELECT * FROM order_line WHERE order_id=? ORDER BY sort', orderId),
+    all<Promotion>(env, 'SELECT * FROM promotion'),
+    all<PromotionItem>(env, 'SELECT promotion_id,item_id FROM promotion_item'),
+    outletInfo(env),
+  ]);
+  const ls: OrderLine[] = lines.map((l) => ({ ...l, modifiers: JSON.parse(l.modifiers_json || '[]') }));
+  const t = computeTotals(ls, promos, promoItems, now(), outlet.tz_offset_min);
+  await batch(env, [
+    stmt(env, "DELETE FROM order_adjustment WHERE order_id=? AND kind='promo'", orderId),
+    ...t.adjustments.filter((a) => a.kind === 'promo').map((a) => stmt(env,
+      'INSERT INTO order_adjustment (id,order_id,order_line_id,kind,promotion_id,amount,reason,staff_id,approved_by) VALUES (?,?,?,?,?,?,?,?,?)',
+      a.id, orderId, a.order_line_id, a.kind, a.promotion_id, a.amount, a.reason, null, null)),
+    stmt(env, 'UPDATE sale_order SET subtotal=?, promo_total=?, comp_total=?, total=?, updated_at=? WHERE id=?', t.subtotal, t.promo_total, t.comp_total, t.total, now(), orderId),
+  ]);
+}
+
+/**
+ * Bank transfer auto-confirmation. A transfer whose note carries the order code ("DUI A012") and covers
+ * the total marks the waiting order paid. Anything above the total is recorded as a tip.
+ */
+export async function confirmByTransfer(env: Env, orderId: string, txn: { id: string; amount: number; reference: string | null }) {
+  const o = await first<{ id: string; status: string; total: number; drawer_session_id: string | null }>(env, 'SELECT id,status,total,drawer_session_id FROM sale_order WHERE id=?', orderId);
+  if (!o || o.status !== 'awaiting_payment' || txn.amount < o.total) return false;
+  const t = now();
+  const tip = txn.amount - o.total;
+  const pending = await first<{ id: string }>(env, "SELECT id FROM payment WHERE order_id=? AND method='vietqr' AND status='pending' LIMIT 1", orderId);
+  const stmts = [
+    pending
+      ? stmt(env, "UPDATE payment SET status='confirmed', amount=?, tip=?, confirmed_at=?, confirmed_by=NULL, bank_txn_id=?, reference=COALESCE(reference, ?) WHERE id=?", o.total, tip, t, txn.id, txn.reference, pending.id)
+      : stmt(env, "INSERT INTO payment (id,order_id,drawer_session_id,method,amount,tip,tendered,change_given,reference,status,confirmed_by,confirmed_at,bank_txn_id,created_at) VALUES (?,?,?,'vietqr',?,?,NULL,0,?,'confirmed',NULL,?,?,?)",
+          ulid(), orderId, o.drawer_session_id, o.total, tip, txn.reference, t, txn.id, t),
+    stmt(env, "UPDATE sale_order SET status='paid', paid_at=?, tip_total=tip_total+?, updated_at=? WHERE id=?", t, tip, t, orderId),
+    stmt(env, "UPDATE bank_txn SET status='matched', order_id=?, updated_at=? WHERE id=?", orderId, t, txn.id),
+    auditStmt(env, { action: 'bank_confirm', entity: 'order', entity_id: orderId, after: { amount: txn.amount, txn: txn.id } }, ulid()),
+  ];
+  await batch(env, stmts);
+  await applyStock(env, orderId, -1, 'sale');
+  return true;
+}
+
+/** When an order starts waiting for a transfer, check whether the money already arrived. */
+async function matchWaitingTransfer(env: Env, orderId: string) {
+  const o = await first<{ short_code: string; total: number }>(env, 'SELECT short_code,total FROM sale_order WHERE id=?', orderId);
+  if (!o) return;
+  const txn = await first<{ id: string; amount: number; reference: string | null }>(env,
+    "SELECT id,amount,reference FROM bank_txn WHERE code=? AND status='unmatched' AND amount>=? AND created_at > ? ORDER BY created_at DESC LIMIT 1",
+    o.short_code, o.total, now() - 2 * 86400000);
+  if (txn) await confirmByTransfer(env, orderId, txn);
 }
 
 /**
@@ -194,21 +259,27 @@ export async function applyStock(env: Env, orderId: string, sign: 1 | -1, reason
 export async function zReport(env: Env, drawerId: string): Promise<ZReport> {
   const d = await first<DrawerSession>(env, 'SELECT * FROM drawer_session WHERE id=?', drawerId);
   need(d, 404, 'Không tìm thấy phiên két');
-  const [paid, voids, pays, pending, cash] = await Promise.all([
-    first<{ n: number; gross: number; promo: number; disc: number; net: number }>(env,
-      "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net FROM sale_order WHERE drawer_session_id=? AND status='paid'", drawerId),
+  const [paid, voids, pays, pending, cash, tabs] = await Promise.all([
+    first<{ n: number; gross: number; promo: number; disc: number; net: number; comp: number }>(env,
+      "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net, COALESCE(SUM(comp_total),0) comp FROM sale_order WHERE drawer_session_id=? AND status='paid'", drawerId),
     first<{ n: number; v: number }>(env, "SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM sale_order WHERE drawer_session_id=? AND status='void'", drawerId),
-    all<{ method: string; amount: number; change: number }>(env,
-      "SELECT p.method, COALESCE(SUM(p.amount),0) amount, COALESCE(SUM(p.change_given),0) change FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.drawer_session_id=? AND o.status='paid' AND p.status='confirmed' GROUP BY p.method", drawerId),
+    all<{ method: string; amount: number; change: number; tip: number }>(env,
+      "SELECT p.method, COALESCE(SUM(p.amount),0) amount, COALESCE(SUM(p.change_given),0) change, COALESCE(SUM(p.tip),0) tip FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.drawer_session_id=? AND o.status='paid' AND p.status='confirmed' GROUP BY p.method", drawerId),
     first<{ n: number }>(env, "SELECT COUNT(*) n FROM sale_order WHERE drawer_session_id=? AND status='awaiting_payment'", drawerId),
     all<{ direction: string; s: number }>(env, 'SELECT direction, COALESCE(SUM(amount),0) s FROM cash_movement WHERE drawer_session_id=? GROUP BY direction', drawerId),
+    first<{ n: number }>(env, "SELECT COUNT(*) n FROM sale_order WHERE drawer_session_id=? AND status='open'", drawerId),
   ]);
   const by = { cash: 0, vietqr: 0, card: 0 } as ZReport['by_method'];
+  const tips = { cash: 0, vietqr: 0, card: 0 } as ZReport['tips'];
   let changeGiven = 0;
-  for (const p of pays) { by[p.method as keyof typeof by] = p.amount; if (p.method === 'cash') changeGiven = p.change; }
+  for (const p of pays) {
+    by[p.method as keyof typeof by] = p.amount;
+    tips[p.method as keyof typeof tips] = p.tip;
+    if (p.method === 'cash') changeGiven = p.change;
+  }
   const cashIn = cash.find((x) => x.direction === 'in')?.s || 0;
   const cashOut = cash.find((x) => x.direction === 'out')?.s || 0;
-  const expected = d.opening_float + by.cash + cashIn - cashOut;
+  const expected = d.opening_float + by.cash + tips.cash + cashIn - cashOut;
   return {
     drawer_session_id: d.id, business_day: d.business_day, opened_at: d.opened_at, closed_at: d.closed_at,
     gross_sales: paid!.gross, promo_total: paid!.promo, discount_total: paid!.disc, net_sales: paid!.net, orders: paid!.n,
@@ -216,6 +287,7 @@ export async function zReport(env: Env, drawerId: string): Promise<ZReport> {
     opening_float: d.opening_float, cash_sales: by.cash, change_given: changeGiven,
     expected_cash: d.status === 'closed' && d.expected_total != null ? d.expected_total : expected,
     counted_cash: d.counted_total, difference: d.difference, pending_vietqr: pending!.n,
+    comp_value: paid!.comp, tips, open_tabs: tabs!.n,
   };
 }
 
@@ -232,6 +304,7 @@ export async function closeDrawer(c: Ctx) {
   need(d.status === 'open', 409, 'Két đã đóng');
   const counted = Object.entries(b.counted || {}).reduce((s, [denom, n]) => s + parseInt(denom, 10) * (n || 0), 0);
   const z = await zReport(c.env, d.id);
+  need(z.open_tabs === 0, 409, `Còn ${z.open_tabs} tab chưa thanh toán. Thanh toán hoặc huỷ tab trước khi đóng két.`);
   const diff = counted - z.expected_cash;
   need(diff === 0 || (b.note && b.note.trim()), 400, 'Cần ghi chú khi có chênh lệch');
   const t = now();

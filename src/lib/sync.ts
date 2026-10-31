@@ -41,7 +41,8 @@ export async function runSync() {
 
 async function pushAll() {
   for (;;) {
-    const rows = (await outbox.all()).slice(0, 50);
+    // Small batches: on Workers Free one request may run at most 50 D1 queries (a paid order uses ~8).
+    const rows = (await outbox.all()).slice(0, 5);
     if (!rows.length) return;
     const res = await api<{ results: { id: string; ok: boolean; error?: string }[] }>('POST', '/api/sync/push', {
       records: rows.map((r) => ({ type: r.type, data: r.data })),
