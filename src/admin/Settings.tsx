@@ -5,6 +5,7 @@ import { parseSettings } from '../../shared/util';
 import { get, post, put } from '../lib/api';
 import { runSync } from '../lib/sync';
 import { Confirm, Segmented } from '../ui';
+import { pugEnabled, pugSay, setPugEnabled } from '../pug';
 import { setTheme, themeChoice, type ThemeChoice, useTheme } from '../lib/theme';
 import { useStore } from '../lib/store';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
@@ -194,7 +195,16 @@ function Appearance() {
   return (
     <div className="col gap12">
       <Segmented value={themeChoice()} onChange={(v: ThemeChoice) => setTheme(v)} options={[['dark', 'Tối (Quầy đêm)'], ['light', 'Sáng'], ['system', 'Theo máy']]} />
+      <PugToggle />
       <p className="tiny faint" style={{ margin: 0 }}>Mỗi máy chọn riêng. Cũng đổi nhanh được ở màn đăng nhập (biểu tượng mặt trời/mặt trăng) và trong menu ☰.</p>
     </div>
+  );
+}
+
+function PugToggle() {
+  const [on, setOn] = useState(pugEnabled());
+  return (
+    <Toggle label="Pug Dui chào hỏi thỉnh thoảng (linh vật của quán)" checked={on}
+      onChange={(v) => { setPugEnabled(v); setOn(v); if (v) setTimeout(() => pugSay('Gâu! Mình quay lại rồi nè 🐶', 'wave'), 200); }} />
   );
 }

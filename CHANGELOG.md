@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.16.0 — 01/11/2026
+- Linh vật Pug "Dui": chú pug vẽ bằng SVG, ló lên ở góc dưới màn hình, vẫy chân, ngoáy đuôi, chớp mắt, kèm câu chào hợp với từng màn.
+  - Luôn xuất hiện khi: đăng nhập (chào theo buổi), thanh toán xong (đội mũ tiệc), chấm công vào/ra.
+  - Ngoài ra chỉ thỉnh thoảng: tối đa 1 lần mỗi 4 phút, khoảng 1/3 số lần chuyển màn; không hiện ở màn thu tiền.
+  - Chạm vào pug để nó đi; tắt/bật trong menu ☰ hoặc Cài đặt › Giao diện.
+
 ## 0.15.0 — 01/11/2026
 - Màn đăng nhập và trang đăng nhập máy mới có nút "Tải app Android" (bản APK mới nhất trên GitHub). Tự ẩn khi đang mở trong app Android hoặc trên iPhone/iPad.
 

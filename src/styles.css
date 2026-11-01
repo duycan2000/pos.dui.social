@@ -606,3 +606,35 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 .apklink:hover { border-color: var(--accent); }
 .apklink .i-download { color: var(--accent-fg); }
 .apklink:hover .i-download { animation: feed .5s ease-in-out 2; }
+
+/* ---------- Dui the pug (mascot) ---------- */
+.pug-host { position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 40; display: flex; align-items: flex-end; gap: 4px;
+  pointer-events: none; animation: pugIn .6s cubic-bezier(.2, 1.4, .4, 1) both; }
+.pug-host.leaving { animation: pugOut .45s ease-in both; }
+.pug-btn { pointer-events: auto; border: 0; background: none; padding: 0; cursor: pointer; filter: drop-shadow(0 6px 10px rgba(0,0,0,.25)); }
+.pug-bubble { pointer-events: none; max-width: 210px; background: var(--surface); color: var(--text); border: 1px solid var(--border-2); border-radius: 16px 16px 4px 16px;
+  padding: 10px 12px; font-size: 13.5px; font-weight: 600; line-height: 1.35; box-shadow: var(--shadow); margin-bottom: 58px; animation: popIn .4s .35s var(--ease) both; transform-origin: bottom right; }
+@keyframes pugIn { from { transform: translateY(140px) rotate(8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pugOut { to { transform: translateY(140px) rotate(-6deg); opacity: 0; } }
+.pug g { transform-box: fill-box; }
+.pug .pug-head { transform-origin: 50% 90%; animation: pugTilt 2.4s ease-in-out .4s infinite; }
+.pug .pug-tail { transform-origin: 0% 100%; animation: pugWag .28s ease-in-out infinite alternate; }
+.pug .pug-paw { transform-origin: 30% 100%; opacity: 0; }
+.pug.mood-wave .pug-paw, .pug.mood-party .pug-paw { opacity: 1; animation: pugWave .5s ease-in-out .5s 5 alternate; }
+.pug .pug-eyes { transform-origin: center; animation: pugBlink 3.6s 1.2s infinite; }
+.pug .pug-tongue { transform-origin: 50% 0%; transform: scaleY(0); }
+.pug.mood-happy .pug-tongue, .pug.mood-party .pug-tongue { animation: pugTongue 1.6s ease-in-out .6s infinite; }
+.pug .pug-ear.l { transform-origin: 100% 0%; animation: pugEar 2.4s ease-in-out .4s infinite; }
+.pug .pug-ear.r { transform-origin: 0% 0%; animation: pugEar 2.4s ease-in-out .4s infinite reverse; }
+.pug.mood-party { animation: pugHop .5s ease-in-out .3s 4 alternate; }
+.pug .pug-hat { transform-origin: 50% 100%; animation: wiggle .8s ease-in-out .5s 3; }
+.pug.mood-sleepy .pug-eyes { transform: scaleY(.2); animation: none; }
+@keyframes pugTilt { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } }
+@keyframes pugWag { from { transform: rotate(-14deg); } to { transform: rotate(16deg); } }
+@keyframes pugWave { from { transform: rotate(-10deg); } to { transform: rotate(28deg); } }
+@keyframes pugBlink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes pugTongue { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.6); } }
+@keyframes pugEar { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(6deg); } }
+@keyframes pugHop { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+@media (min-width: 980px) { .pug-host { bottom: 24px; right: 24px; } }
+@media (prefers-reduced-motion: reduce) { .pug-host, .pug-host.leaving { animation: none !important; } .pug-host.leaving { opacity: 0; } }

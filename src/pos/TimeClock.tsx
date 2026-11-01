@@ -5,6 +5,7 @@ import { verifyPin } from '../../shared/crypto';
 import { fmtMinutes, shiftWindow, weekStart, workedMinutes } from '../../shared/timesheet';
 import type { StaffPublic } from '../../shared/types';
 import { addDays, fmtDay, hhmm } from '../../shared/util';
+import { pugSay } from '../pug';
 import { clockIn, clockOut, getState, navigate, openEntry, today, toast, useStore } from '../lib/store';
 import { Icon, PinPad, TopBar } from '../ui';
 
@@ -74,10 +75,10 @@ function MyTime({ who, signedIn, onBack }: { who: StaffPublic; signedIn: boolean
   const weekMin = mine.filter((e) => e.business_day >= monday && e.business_day <= week[6]).reduce((s, e) => s + workedMinutes(e), 0);
   const todayShift = schedule.find((s) => s.staff_id === who.id && s.day === day);
 
-  const doIn = async () => { await clockIn(who.id); toast(`${who.name} vào ca lúc ${hhmm(Date.now(), tz)}`); setDoneAt(Date.now()); };
+  const doIn = async () => { await clockIn(who.id); toast(`${who.name} vào ca lúc ${hhmm(Date.now(), tz)}`); pugSay(`Chúc ${who.name} ca làm vui vẻ! 🐾`, 'wave'); setDoneAt(Date.now()); };
   const doOut = async () => {
     const e = await clockOut(who.id, brk);
-    if (e) toast(`${who.name} ra ca · ${fmtMinutes(workedMinutes(e))}`);
+    if (e) { toast(`${who.name} ra ca · ${fmtMinutes(workedMinutes(e))}`); pugSay(`Vất vả rồi ${who.name}! Về nghỉ ngơi nha 😴`, 'sleepy'); }
     setDoneAt(Date.now());
   };
   const late = todayShift && !open ? Math.round((Date.now() - shiftWindow(todayShift, tz, cutoff).start) / 60000) : 0;

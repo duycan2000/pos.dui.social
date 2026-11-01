@@ -20,6 +20,7 @@ import TimeClock from './pos/TimeClock';
 import Orders from './pos/Orders';
 import { Register, Setup } from './pos/Setup';
 import SyncStatus from './pos/SyncStatus';
+import { PugHost } from './pug';
 import { ApprovalDialog, Toast } from './ui';
 
 let started = false;
@@ -61,6 +62,7 @@ export default function App() {
       {view}
       <ApprovalDialog />
       <Toast />
+      <PugHost />
     </>
   );
 }

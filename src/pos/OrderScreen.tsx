@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChosenOption, Item } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
+import { PugSvg, pugEnabled, pugSay, setPugEnabled } from '../pug';
 import { addToCart, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
 import { appVersion, CAT_COLORS, Icon, Sheet, ThemeToggle } from '../ui';
 import Ticket from './Ticket';
@@ -235,6 +236,9 @@ function MenuDrawer({ onClose, manager, pendingQr, openTabs }: { onClose: () => 
         <button className="navitem" onClick={() => go('printer')}><Icon name="printer" />Máy in</button>
         <button className="navitem" onClick={() => go('sync')}><Icon name="sync" />Đồng bộ</button>
         <ThemeToggle withLabel />
+        <button className="navitem" onClick={() => { const on = !pugEnabled(); setPugEnabled(on); onClose(); if (on) setTimeout(() => pugSay('Gâu! Mình đây 🐶', 'wave'), 300); }}>
+          <PugSvg size={24} mood="happy" />{pugEnabled() ? 'Tắt Pug Dui' : 'Bật Pug Dui'}
+        </button>
         <button className="navitem" onClick={() => go('close')}><Icon name="door" />Kết ca / Đóng két</button>
         {manager && <button className="navitem" onClick={() => go('admin')}><Icon name="settings" />Quản trị</button>}
         <div className="grow" />
