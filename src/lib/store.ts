@@ -99,6 +99,7 @@ export function toast(msg: string, error = false) {
 export function navigate(route: string) {
   setState({ route });
   if (location.hash !== '#' + route) history.replaceState(null, '', '#' + route);
+  if (state.staff) rememberSession();
 }
 
 async function audit(e: Omit<AuditEntry, 'id' | 'at' | 'outlet_id' | 'device_id'>) {
@@ -132,7 +133,36 @@ export async function boot() {
   setDeviceToken(token);
   await loadLocal();
   setState({ boot: 'ready' });
-  navigate('login');
+  if (!(await resumeSession())) navigate('login');
+}
+
+// A reload (or Android killing the app in the background) must not throw the person out mid-order.
+// The signed-in staff member and the screen they were on are kept on the device until they lock it,
+// for at most RESUME_MS of inactivity.
+const RESUME_MS = 8 * 3600 * 1000;
+let touchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function rememberSession() {
+  clearTimeout(touchTimer);
+  touchTimer = setTimeout(() => {
+    const s = getState();
+    if (s.staff) kv.set('session', { staffId: s.staff.id, at: Date.now(), route: s.route.startsWith('admin') ? 'order' : s.route });
+  }, 300);
+}
+
+async function resumeSession(): Promise<boolean> {
+  const saved = await kv.get<{ staffId: string; at: number; route: string }>('session');
+  const staff = saved && Date.now() - saved.at < RESUME_MS ? state.config?.staff.find((x) => x.id === saved.staffId && x.active) : undefined;
+  if (!saved || !staff) { if (saved) await kv.del('session'); return false; }
+  const shift = (await kv.get<StaffShift>('shift:' + staff.id)) ?? null;
+  setState({ staff, shift: shift && !shift.ended_at ? shift : null });
+  pickDrawer();
+  const s = getState();
+  const ready = s.shift && s.drawer && s.shift.drawer_session_id === s.drawer.id;
+  // Payment screens are rebuilt from the saved cart, so going back to the order is always safe.
+  const safe = ['order', 'cart', 'tables', 'tabs', 'orders', 'clock', 'cashmove', 'printer', 'sync', 'close'];
+  navigate(!ready ? 'open-shift' : safe.includes(saved.route) || saved.route.startsWith('order/') ? saved.route : 'order');
+  return true;
 }
 
 export async function loadLocal() {
@@ -185,6 +215,8 @@ export async function login(staff: StaffPublic, pin: string): Promise<boolean> {
 
 export function lock() {
   setStaffSession('');
+  clearTimeout(touchTimer);
+  kv.del('session');
   setState({ staff: null, adminSession: null });
   navigate('login');
 }
@@ -239,6 +271,7 @@ export async function endMyShift(alsoClockOut = false) {
 
 async function saveCart(cart: Cart) {
   setState({ cart });
+  if (state.staff) rememberSession();
   await kv.set('cart', cart);
 }
 

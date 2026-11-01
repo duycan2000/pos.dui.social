@@ -36,6 +36,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; }
+/* No pull-to-refresh: a downward swipe while selling must never reload the app. */
+html, body { overscroll-behavior: none; overscroll-behavior-y: none; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.4;

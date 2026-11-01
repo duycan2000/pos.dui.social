@@ -2,6 +2,10 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.11.0 — 01/11/2026
+- Tắt "kéo xuống để tải lại" của Chrome trong app (cả app Android).
+- Nếu app vẫn bị tải lại (mất sóng, Android đóng app chạy nền…), người đang đăng nhập được giữ nguyên và quay về đúng màn đang làm (đơn đang chọn vẫn còn). Chỉ khi bấm "Khoá máy · đổi người" hoặc để yên quá 8 giờ thì mới phải nhập PIN lại.
+
 ## 0.10.0 — 01/11/2026
 - Nút −1 trên ô món (bấm ô = +1, bấm viên "− 2" ở góc = bớt 1) để sửa khi lỡ bấm 2 lần.
 - Trong đơn (giỏ / tab / bàn) mỗi món có − số lượng +. Món chưa gửi: bớt/thêm ngay (về 0 thì xoá). Món đã gửi quầy bar: + tạo lượt mới, − cần quản lý duyệt + lý do và ghi nhật ký.
