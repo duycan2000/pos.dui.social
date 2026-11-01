@@ -23,6 +23,7 @@ export async function runSync() {
   if (running) { again = true; return; }
   running = true;
   setState((s) => ({ net: { ...s.net, busy: true } }));
+  document.body.dataset.sync = 'busy'; // spins every sync icon (styles.css)
   try {
     await pushAll();
     await pullAll();
@@ -34,6 +35,7 @@ export async function runSync() {
   } finally {
     running = false;
     setState((s) => ({ net: { ...s.net, busy: false } }));
+    delete document.body.dataset.sync;
     await refreshPending();
     if (again) { again = false; runSync(); }
   }

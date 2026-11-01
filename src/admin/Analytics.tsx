@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { addDays, fmtDay, vnd, vndShort } from '../../shared/util';
 import { get } from '../lib/api';
 import { navigate, today } from '../lib/store';
-import { Icon, Segmented } from '../ui';
+import { Icon, Segmented, useCountUp } from '../ui';
 import { Bars, Heat, PairBars, Ranked, ShareBar } from './charts';
 import { Loading, Page, useLoad } from './common';
 
@@ -62,7 +62,7 @@ export default function Analytics() {
         <>
           <div className={'verdict ' + (s.revenue || s.opex ? (s.profit >= 0 ? 'good' : 'alert') : 'info')}>
             <span className="small muted">{d.partial ? `Tạm tính đến hôm nay (${fmtDay(d.to)})` : 'Kết quả cả kỳ'}</span>
-            <span className="big" style={{ color: s.profit >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{s.profit >= 0 ? 'Lãi ' : 'Lỗ '}{vnd(Math.abs(s.profit))}</span>
+            <span className="big" style={{ color: s.profit >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{s.profit >= 0 ? 'Lãi ' : 'Lỗ '}<CountUp value={Math.abs(s.profit)} /></span>
             <span className="small">{head.text}</span>
             <div className="stats" style={{ marginTop: 8 }}>
               <div className="stat"><div className="small muted">Doanh thu</div><div className="v">{vndShort(s.revenue)}</div><div className={'d ' + (s.revenue >= s.prev_revenue ? 'ok' : 'danger')}>{s.prev_revenue ? `${s.revenue >= s.prev_revenue ? '▲' : '▼'} ${Math.abs(Math.round(((s.revenue - s.prev_revenue) / s.prev_revenue) * 100))}% kỳ trước` : '—'}</div></div>
@@ -152,4 +152,8 @@ function ChartsBlock({ a }: { a: An }) {
       </div>
     </>
   );
+}
+
+function CountUp({ value }: { value: number }) {
+  return <>{vnd(useCountUp(value))}</>;
 }

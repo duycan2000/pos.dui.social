@@ -2,6 +2,11 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.14.0 — 01/11/2026
+- App sống động hơn, chỉ dùng CSS nhẹ (không thêm thư viện): trang mới trượt lên, danh sách và thẻ hiện lần lượt, số đếm trên nút nảy lên khi đổi, biểu tượng có cử động riêng (đồng bộ xoay khi đang gửi, máy in rung, quà lắc, dấu + xoay), chấm đồng bộ nhấp nháy khi đang gửi/mất mạng.
+- Bàn có khách "thở" nhẹ, bàn đã in tạm tính có vòng sóng; màn Đã thanh toán có dấu tích tự vẽ, vòng toả và pháo giấy; mã VietQR có tia quét khi chờ tiền; biểu đồ mọc lên từ trục; số lãi/lỗ đếm lên; cảnh báo đỏ có nhịp đập.
+- Tôn trọng cài đặt "Giảm chuyển động" của điện thoại (tắt hết hiệu ứng).
+
 ## 0.13.0 — 01/11/2026
 - Giao diện sáng (nền trắng, chữ tối) bên cạnh giao diện tối "Quầy đêm". Đổi bằng biểu tượng mặt trời/mặt trăng ở màn đăng nhập, mục "Giao diện sáng/tối" trong menu ☰, hoặc Cài đặt › Giao diện (Tối / Sáng / Theo máy). Mỗi máy nhớ lựa chọn riêng.
 

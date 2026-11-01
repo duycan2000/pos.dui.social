@@ -505,3 +505,97 @@ table.t tbody tr:hover td { background: var(--surface-2); }
 .finding .t { font-weight: 700; }
 .finding .x { font-size: 13px; color: var(--muted); }
 .finding .area { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-right: 6px; }
+
+/* ======================================================================
+   Motion (v0.14). Only transform/opacity/stroke animations: GPU-cheap, no layout work.
+   Everything is switched off for people who ask the system for reduced motion.
+   ====================================================================== */
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(10deg); } }
+@keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+@keyframes feed { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2px); } }
+@keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 165, 36, .0), 0 6px 18px rgba(245, 165, 36, .18); } 50% { box-shadow: 0 0 0 6px rgba(245, 165, 36, .14), 0 6px 18px rgba(245, 165, 36, .18); } }
+@keyframes ping { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes draw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 var(--ok-soft); } 100% { box-shadow: 0 0 0 26px rgba(0,0,0,0); } }
+@keyframes burst { 0% { transform: rotate(var(--a)) translateY(0) scale(.4); opacity: 1; } 100% { transform: rotate(var(--a)) translateY(-78px) scale(1); opacity: 0; } }
+@keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes scan { 0% { transform: translateY(0); } 100% { transform: translateY(240px); } }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@keyframes tick { to { transform: rotate(360deg); } }
+
+/* Page enter: every route change mounts a new page, which rises in. */
+.content-inner, .screen > .scroll, .pos-main .grid, .login-panel, .ticket-lines { animation: rise .26s var(--ease) both; }
+/* Lists and cards arrive one after another. */
+.list > *, .tabgrid > *, .tablelist > *, .avatars > *, .stats > .stat, .chartgrid > *, .floor > * { animation: rise .32s var(--ease) both; }
+.list > :nth-child(2), .tabgrid > :nth-child(2), .tablelist > :nth-child(2), .avatars > :nth-child(2), .stats > :nth-child(2), .chartgrid > :nth-child(2), .floor > :nth-child(2) { animation-delay: 30ms; }
+.list > :nth-child(3), .tabgrid > :nth-child(3), .tablelist > :nth-child(3), .avatars > :nth-child(3), .stats > :nth-child(3), .chartgrid > :nth-child(3), .floor > :nth-child(3) { animation-delay: 60ms; }
+.list > :nth-child(4), .tabgrid > :nth-child(4), .tablelist > :nth-child(4), .avatars > :nth-child(4), .stats > :nth-child(4), .chartgrid > :nth-child(4), .floor > :nth-child(4) { animation-delay: 90ms; }
+.list > :nth-child(5), .tabgrid > :nth-child(5), .tablelist > :nth-child(5), .avatars > :nth-child(5), .chartgrid > :nth-child(5), .floor > :nth-child(5) { animation-delay: 120ms; }
+.list > :nth-child(6), .tabgrid > :nth-child(6), .tablelist > :nth-child(6), .avatars > :nth-child(6), .chartgrid > :nth-child(6), .floor > :nth-child(6) { animation-delay: 150ms; }
+.list > :nth-child(n+7), .tabgrid > :nth-child(n+7), .tablelist > :nth-child(n+7), .avatars > :nth-child(n+7), .chartgrid > :nth-child(n+7), .floor > :nth-child(n+7) { animation-delay: 180ms; }
+
+/* Counters and badges pop when the number changes (the element is re-keyed). */
+.pill .count, .ticketbar .summary .n, .tile-minus, .pindots span.on { animation: bump .28s var(--ease); }
+.badge.ok, .finding .ic { animation: popIn .35s var(--ease) both; }
+
+/* Icons with a personality — on hover/press, or while they mean "working". */
+.i { transition: transform .2s var(--ease); transform-box: fill-box; transform-origin: center; }
+.navitem:hover .i, .li:hover > .iconbtn .i { animation: nudge .5s var(--ease); }
+button:hover .i-printer, button:active .i-printer { animation: feed .45s ease-in-out 2; }
+button:hover .i-gift, button:active .i-gift { animation: wiggle .5s ease-in-out; }
+button:hover .i-sync, button:active .i-sync, body[data-sync="busy"] .i-sync { animation: tick 1s linear infinite; }
+button:hover .i-clock { animation: wiggle .6s ease-in-out; }
+button:hover .i-plus, button:active .i-plus { transform: rotate(90deg); }
+button:hover .i-trash { animation: wiggle .4s ease-in-out; }
+button:hover .i-bluetooth, button:hover .i-qr { animation: float .8s ease-in-out; }
+button:hover .i-sun { animation: tick 6s linear infinite; }
+button:hover .i-moon { animation: wiggle .7s ease-in-out; }
+.navitem.on .i { transform: scale(1.08); }
+
+/* Empty states breathe instead of sitting dead. */
+.empty .ico { animation: float 3.2s ease-in-out infinite; }
+
+/* Sync dot: a soft ping while sending, red pulse when offline. */
+.dot { position: relative; }
+.dot.busy::after, .dot.off::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: ping 1.4s ease-out infinite; }
+
+/* Floor plan: tables with guests breathe; a pre-billed table pings. */
+.tbl.busy { animation: rise .32s var(--ease) both, breathe 3.2s ease-in-out 1s infinite; }
+.tbl.bill { position: relative; }
+.tbl.bill::after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--info); animation: ping 2s ease-out infinite; }
+
+/* Paid: ring ripples, the tick draws itself, confetti bursts. */
+.success-ring { position: relative; animation: popIn .45s var(--ease) both, ring 1.2s ease-out .2s 2; }
+.success-ring .i-check path { stroke-dasharray: 30; animation: draw .5s .25s var(--ease) both; }
+.burst { position: absolute; inset: 50% auto auto 50%; width: 0; height: 0; pointer-events: none; }
+.burst i { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); animation: burst .9s cubic-bezier(.2,.7,.3,1) var(--d) both; }
+.burst i:nth-child(3n) { background: var(--ok); border-radius: 50%; }
+.burst i:nth-child(3n+1) { background: var(--info); }
+
+/* VietQR: a scan line sweeps the code while waiting for the transfer. */
+.qr { position: relative; overflow: hidden; }
+.qr::after { content: ''; position: absolute; left: 10px; right: 10px; top: 14px; height: 3px; border-radius: 3px;
+  background: linear-gradient(90deg, transparent, rgba(245, 165, 36, .9), transparent); animation: scan 2.2s ease-in-out infinite alternate; }
+
+/* Charts: bars grow up from the baseline. */
+.chart .grow { transform-box: fill-box; transform-origin: bottom; animation: grow .55s var(--ease) both; }
+.heatgrid .cell { animation: rise .4s var(--ease) both; }
+
+/* Brand: one shimmer pass on the login screen. */
+.login-brand .brand { background: linear-gradient(100deg, var(--accent-fg) 0 38%, #fffbe6 50%, var(--accent-fg) 62% 100%) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 2.4s ease-out .3s 1 both; }
+
+/* Alerts on the analysis page keep a soft pulse so they are not missed. */
+.finding.alert .ic { position: relative; }
+.finding.alert .ic::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--danger); animation: ping 1.8s ease-out infinite; }
+
+/* Clock-in card: the "in shift" badge has a live dot. */
+.badge.ok::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; animation: float 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .login-brand .brand { background: none; color: var(--accent-fg); }
+}

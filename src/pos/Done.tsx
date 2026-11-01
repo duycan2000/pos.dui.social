@@ -30,7 +30,11 @@ export default function Done() {
   return (
     <div className="screen">
       <div className="scroll pad col center" style={{ alignItems: 'center', gap: 14, paddingTop: 64 }}>
-        <div className="success-ring"><Icon name="check" size={52} /></div>
+        <div className="success-ring">
+          <Icon name="check" size={52} />
+          {/* a small burst of confetti, pure CSS */}
+          <span className="burst" aria-hidden="true">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ ['--a' as string]: `${i * 30}deg`, ['--d' as string]: `${(i % 3) * 40}ms` }} />)}</span>
+        </div>
         <div className="big">Đã thanh toán</div>
         <div className="muted">#{o.short_code}{orderTitle(o) ? ` · ${orderTitle(o)}` : ''} · {vnd(o.total)}</div>
         {last.change > 0 && (

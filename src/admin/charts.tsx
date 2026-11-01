@@ -87,7 +87,7 @@ export function Bars({ data, compare, compareLabel, height = 220, color = ACCENT
             <g key={d.key}>
               <rect x={pad.l + i * bw} y={pad.t} width={bw} height={H - pad.t - pad.b} fill="transparent"
                 onPointerMove={(e) => show(e, d.tip ?? <><b>{d.label}</b><br />{vnd(d.value)}</>)} onClick={(e) => show(e, d.tip ?? <><b>{d.label}</b><br />{vnd(d.value)}</>)} />
-              <path d={path} fill={d.value < 0 ? 'var(--danger)' : color} opacity={d.muted ? 0.45 : 1} pointerEvents="none" />
+              <path className="grow" style={{ animationDelay: `${Math.min(i, 40) * 12}ms` }} d={path} fill={d.value < 0 ? 'var(--danger)' : color} opacity={d.muted ? 0.45 : 1} pointerEvents="none" />
               {i % every === 0 && <text x={pad.l + i * bw + bw / 2} y={H - 8} textAnchor="middle" className="axis">{d.label}</text>}
             </g>
           );
@@ -123,7 +123,7 @@ export function PairBars({ data, names, height = 220 }: { data: { key: string; l
   const bar = (x: number, v: number, fill: string) => {
     const top = y(Math.max(0, v));
     const h = Math.max(v ? 1.5 : 0, Math.abs(y(v) - y(0)));
-    return <rect x={x} y={top} width={barW} height={h} rx={Math.min(3, barW / 2)} fill={v < 0 ? 'var(--danger)' : fill} pointerEvents="none" />;
+    return <rect className="grow" x={x} y={top} width={barW} height={h} rx={Math.min(3, barW / 2)} fill={v < 0 ? 'var(--danger)' : fill} pointerEvents="none" />;
   };
   return (
     <div ref={box} className="chart" onPointerLeave={hide}>

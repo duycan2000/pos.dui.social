@@ -55,8 +55,9 @@ const paths: Record<string, ReactNode> = {
 };
 
 export function Icon({ name, size = 22 }: { name: string; size?: number }) {
+  // "i i-<name>" lets styles.css give each icon its own small motion (spinning sync, ringing printer…).
   return (
-    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" className={'i i-' + name} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       {paths[name]}
     </svg>
   );
@@ -266,4 +267,22 @@ export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
   return withLabel
     ? <button className="navitem" onClick={() => setTheme(next)}><Icon name={t === 'dark' ? 'sun' : 'moon'} />{t === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}</button>
     : <button className="iconbtn" aria-label={label} title={label} onClick={() => setTheme(next)}><Icon name={t === 'dark' ? 'sun' : 'moon'} /></button>;
+}
+
+/** Count up to a number when it first appears (≈0.6 s, one requestAnimationFrame loop, skipped for reduced motion). */
+export function useCountUp(target: number, ms = 650) {
+  const [v, setV] = useState(target);
+  useEffect(() => {
+    if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) { setV(target); return; }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      setV(Math.round(target * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
 }

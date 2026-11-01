@@ -64,11 +64,11 @@ export default function OrderScreen() {
           </div>
           {hasTables && (
             <button className="pill" onClick={() => navigate('tables')} aria-label={`Sơ đồ bàn: ${busyTables} bàn có khách`}>
-              <Icon name="table" size={18} /><span className="phone-hide">Bàn</span>{busyTables > 0 && <span className="count">{busyTables}</span>}
+              <Icon name="table" size={18} /><span className="phone-hide">Bàn</span>{busyTables > 0 && <span key={busyTables} className="count">{busyTables}</span>}
             </button>
           )}
           <button className="pill" onClick={() => navigate('tabs')} aria-label={`Tab đang mở: ${openTabs}`}>
-            <Icon name="tab" size={18} /><span className="phone-hide">Tab</span>{openTabs > 0 && <span className="count">{openTabs}</span>}
+            <Icon name="tab" size={18} /><span className="phone-hide">Tab</span>{openTabs > 0 && <span key={openTabs} className="count">{openTabs}</span>}
           </button>
           <button className="pill" onClick={() => navigate('orders')} aria-label="Đơn hôm nay">
             <Icon name="list" size={18} /><span className="phone-hide">Đơn</span>{pendingQr > 0 && <span className="count blue">{pendingQr}</span>}
@@ -114,7 +114,7 @@ export default function OrderScreen() {
 
         <div className="ticketbar phone-only">
           <button className="summary" disabled={!count && !cart.tabCode && !cart.table_id} onClick={() => navigate('cart')}>
-            <span className="row" style={{ gap: 0 }}><span className="n">{count}</span>{cart.table_id ? (cfg.tables?.find((t) => t.id === cart.table_id)?.name ?? 'Bàn') : cart.tabCode ? `Tab ${cart.customer_label}` : 'Xem đơn'}</span>
+            <span className="row" style={{ gap: 0 }}><span key={count} className="n">{count}</span>{cart.table_id ? (cfg.tables?.find((t) => t.id === cart.table_id)?.name ?? 'Bàn') : cart.tabCode ? `Tab ${cart.customer_label}` : 'Xem đơn'}</span>
             <span className="mono">{vnd(totals.total)}</span>
           </button>
         </div>
@@ -154,7 +154,7 @@ function Tile({ item, color, bogo, qty, onTap, onLong, onMinus }: { item: Item; 
       </span>
     </button>
     {/* Tap the tile = +1, tap this pill = −1 (undo a double tap). */}
-    {qty > 0 && <button className="tile-minus" aria-label={`Bớt 1 ${item.name_vi}, đang có ${qty}`} onClick={onMinus}><Icon name="minus" size={16} />{qty}</button>}
+    {qty > 0 && <button key={qty} className="tile-minus" aria-label={`Bớt 1 ${item.name_vi}, đang có ${qty}`} onClick={onMinus}><Icon name="minus" size={16} />{qty}</button>}
     </div>
   );
 }
