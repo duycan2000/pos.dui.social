@@ -126,8 +126,12 @@ export async function sendBytes(bytes: Uint8Array) {
 // ---------- documents ----------
 
 export type PLine =
-  | { t: 'text'; text: string; align?: 'left' | 'center' | 'right'; size?: 'sm' | 'md' | 'lg' | 'xl'; bold?: boolean; spacing?: number }
-  | { t: 'row'; left: string; right: string; size?: 'sm' | 'md' | 'lg'; bold?: boolean }
+  | { t: 'text'; text: string; align?: 'left' | 'center' | 'right'; size?: 'sm' | 'md' | 'lg' | 'xl'; bold?: boolean; italic?: boolean; spacing?: number }
+  | { t: 'row'; left: string; right: string; size?: 'sm' | 'md' | 'lg'; bold?: boolean; italic?: boolean }
+  /** "Label:  value" with the label bold, as on Vietnamese POS bills. */
+  | { t: 'field'; label: string; value: string }
+  /** Bordered table: header row, wrapped cells, dashed inner column lines. Widths are fractions summing to 1. */
+  | { t: 'table'; cols: { label: string; w: number; align?: 'left' | 'center' | 'right' }[]; rows: string[][] }
   /** Item line: qty column, wrapped name, amount on the right; optional detail line underneath. */
   | { t: 'item'; qty: string; name: string; right: string; detail?: string }
   /** White text on a black band (e.g. PAID / NOT PAID). */
@@ -235,8 +239,80 @@ export function renderDoc(doc: PLine[], paper: 58 | 80): HTMLCanvasElement {
       y += 4;
       continue;
     }
+    if (l.t === 'field') {
+      const size = SIZES.sm + 1;
+      const bold = `700 ${size}px ${FONT}`;
+      const reg = `400 ${size}px ${FONT}`;
+      measure.font = bold;
+      const lw = measure.measureText(l.label + ' ').width;
+      measure.font = reg;
+      const lines = wrap(measure, l.value, width - pad * 2 - lw);
+      lines.forEach((line, i) => {
+        const yy = y + size;
+        ops.push({ y: yy, draw: (ctx) => {
+          if (i === 0) { ctx.font = bold; ctx.textAlign = 'left'; ctx.fillText(l.label, pad, yy); }
+          ctx.font = reg; ctx.textAlign = 'left'; ctx.fillText(line, pad + lw, yy);
+        } });
+        y += Math.round(size * 1.35);
+      });
+      continue;
+    }
+    if (l.t === 'table') {
+      const size = 19;
+      const font = (w: number, px: number) => `${w} ${px}px ${FONT}`;
+      const inner = width - pad * 2;
+      const xs: number[] = [pad];
+      for (const c of l.cols) xs.push(xs[xs.length - 1] + Math.round(c.w * inner));
+      xs[xs.length - 1] = width - pad;
+      const cellPad = 4;
+      const lh = Math.round(size * 1.25);
+      // Text columns wrap; number columns stay on one line and shrink to fit (e.g. 1.250.000 in a narrow cell).
+      const layoutRow = (cells: string[], head: boolean) => {
+        const w = head ? 700 : 400;
+        const cellsOut = cells.map((txt, k) => {
+          const room = xs[k + 1] - xs[k] - cellPad * 2;
+          const wraps = head || (l.cols[k].align ?? 'left') === 'left';
+          measure.font = font(w, size);
+          if (wraps) return { lines: wrap(measure, txt, room), px: size };
+          const tw = measure.measureText(txt).width;
+          return { lines: [txt], px: tw > room ? Math.max(12, Math.floor((size * room) / tw)) : size };
+        });
+        const lines = Math.max(1, ...cellsOut.map((c) => c.lines.length));
+        return { cells: cellsOut, w, h: lines * lh + cellPad * 2 + 2 };
+      };
+      const top = y + 2;
+      let yy = top;
+      const rowsLayout = [{ ...layoutRow(l.cols.map((c) => c.label), true), head: true }, ...l.rows.map((r) => ({ ...layoutRow(r, false), head: false }))];
+      const rowYs: number[] = [];
+      for (const r of rowsLayout) {
+        const ry = yy;
+        rowYs.push(ry);
+        ops.push({ y: ry, draw: (ctx) => {
+          r.cells.forEach((c, k) => {
+            const align = r.head ? 'center' : l.cols[k].align ?? 'left';
+            const x = align === 'center' ? (xs[k] + xs[k + 1]) / 2 : align === 'right' ? xs[k + 1] - cellPad : xs[k] + cellPad;
+            ctx.font = font(r.w, c.px);
+            ctx.textAlign = align;
+            c.lines.forEach((line, n) => ctx.fillText(line, x, ry + cellPad + size + n * lh));
+          });
+        } });
+        yy += r.h;
+      }
+      const bottom = yy;
+      ops.push({ y: top, draw: (ctx) => {
+        ctx.lineWidth = 2;
+        ctx.strokeRect(xs[0], top, xs[xs.length - 1] - xs[0], bottom - top);
+        for (let k = 1; k < rowYs.length; k++) { ctx.beginPath(); ctx.moveTo(xs[0], rowYs[k]); ctx.lineTo(xs[xs.length - 1], rowYs[k]); ctx.stroke(); }
+        // Column lines dashed, like the printed sample.
+        ctx.setLineDash([4, 3]);
+        for (let k = 1; k < xs.length - 1; k++) { ctx.beginPath(); ctx.moveTo(xs[k], top); ctx.lineTo(xs[k], bottom); ctx.stroke(); }
+        ctx.setLineDash([]);
+      } });
+      y = bottom + 8;
+      continue;
+    }
     const size = SIZES[l.size ?? 'md'];
-    const font = `${l.bold ? 700 : 400} ${size}px ${FONT}`;
+    const font = `${l.italic ? 'italic ' : ''}${l.bold ? 700 : 400} ${size}px ${FONT}`;
     measure.font = font;
     const lh = Math.round(size * 1.3);
     if (l.t === 'text') {

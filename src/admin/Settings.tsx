@@ -76,8 +76,14 @@ export function Settings() {
 
       <div className="section-title">Hoá đơn & màn bán</div>
       <div className="form-grid">
-        <Text label="Dòng đầu bill (in dưới tên quán, nên viết tiếng Anh)" value={f.receipt_header} onChange={(v) => setF({ ...f, receipt_header: v || null })} />
-        <Text label="Dòng cuối bill (mặc định: Thank you — see you again soon!)" value={f.receipt_footer} onChange={(v) => setF({ ...f, receipt_footer: v || null })} />
+        <Select label="Ngôn ngữ trên bill" value={st.bill_lang ?? 'en'} onChange={(v) => setSt({ ...st, bill_lang: v as 'en' | 'vi' })} options={[['en', 'Tiếng Anh (Guest bill, Total…)'], ['vi', 'Tiếng Việt (Phiếu tạm tính, Tổng thanh toán…)']]} />
+        <Text label="Địa chỉ in dưới tên quán" value={f.receipt_header} onChange={(v) => setF({ ...f, receipt_header: v || null })} placeholder="VD: An Thượng 2, Ngũ Hành Sơn, Đà Nẵng" />
+        <label className="field"><span>Lời nhắn in đậm cuối bill (mỗi dòng một câu)</span>
+          <textarea className="input" rows={3} value={st.bill_note ?? ''} onChange={(e) => setSt({ ...st, bill_note: e.target.value })} placeholder={'Vui lòng kiểm tra kỹ lại nội dung trước khi thanh toán!\nXuất hoá đơn trong vòng 24h'} />
+        </label>
+        <Text label="Dòng cảm ơn (để trống = mặc định)" value={f.receipt_footer} onChange={(v) => setF({ ...f, receipt_footer: v || null })} placeholder="Trân trọng cảm ơn! / Thank you — see you again soon!" />
+        <Text label="Pass wifi (in trên bill, để trống nếu không)" value={st.wifi_pass} onChange={(v) => setSt({ ...st, wifi_pass: v })} />
+        <Toggle label="In mã QR chuyển khoản trên cả phiếu tạm tính" checked={!!st.prebill_qr} onChange={(v) => setSt({ ...st, prebill_qr: v })} />
         <Num label="Tự quay về đơn mới sau (giây)" value={st.done_return_seconds ?? 5} onChange={(v) => setSt({ ...st, done_return_seconds: v })} />
         <Num label="Cảnh báo giá vốn khi vượt (%)" value={st.cost_alert_pct ?? 30} onChange={(v) => setSt({ ...st, cost_alert_pct: v })} />
       </div>

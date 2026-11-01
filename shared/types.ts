@@ -29,6 +29,13 @@ export interface OutletSettings {
   night_premium_pct?: number;
   /** Minutes after the scheduled start before a clock-in counts as late. */
   late_grace_min?: number;
+  /** Guest bill labels: English (default) or Vietnamese. */
+  bill_lang?: 'en' | 'vi';
+  /** Lines printed in bold above the thank-you line (one per line). */
+  bill_note?: string;
+  wifi_pass?: string;
+  /** Also print the bank QR on the pre-bill (tạm tính), not only when the guest picks transfer. */
+  prebill_qr?: boolean;
   /** Business details printed on tax books (Mẫu S1a-HKD). */
   tax_info?: TaxInfo;
 }
