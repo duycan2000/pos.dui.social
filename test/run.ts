@@ -79,7 +79,9 @@ let cfg: any;
 let ownerId = '';
 await test('Setup creates outlet, owner, starter menu and device A', async () => {
   assert.equal((await call('GET', '/api/setup/status')).body.needsSetup, true);
-  const r = await call('POST', '/api/setup', { outletName: 'Dui Social', ownerName: 'Duy', ownerPin: '123456', deviceName: 'Máy A' });
+  assert.equal((await call('POST', '/api/setup', { outletName: 'Dui Social', ownerName: 'Duy', ownerPin: '123456', deviceName: 'Máy A' })).status, 400); // login + password required
+  assert.equal((await call('POST', '/api/setup', { outletName: 'Dui Social', ownerName: 'Duy', ownerPin: '123456', ownerLogin: 'duy@dui.social', ownerPassword: '12345678' })).status, 400); // digits only
+  const r = await call('POST', '/api/setup', { outletName: 'Dui Social', ownerName: 'Duy', ownerPin: '123456', ownerLogin: 'Duy@Dui.Social', ownerPassword: 'quay-bar-2026', deviceName: 'Máy A' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   deviceToken = r.body.deviceToken;
   assert.equal(r.body.device.order_prefix, 'A');
@@ -93,11 +95,23 @@ await test('Pull returns config with categories, modifier groups, BOGO promo', a
   assert.equal(cfg.promotions[0].type, 'bogo');
   ownerId = cfg.staff[0].id;
 });
-await test('Register second device needs a manager PIN', async () => {
+await test('New device: login + password (a PIN alone no longer works); legacy installs still use the manager PIN', async () => {
   const save = deviceToken; deviceToken = '';
-  assert.equal((await call('POST', '/api/devices/register', { pin: '999999', deviceName: 'Máy B' })).status, 403);
-  const r = await call('POST', '/api/devices/register', { pin: '123456', deviceName: 'Máy B' });
+  assert.equal((await call('GET', '/api/setup/status')).body.passwordLogin, true);
+  assert.equal((await call('POST', '/api/devices/register', { pin: '123456', deviceName: 'Máy B' })).status, 400);
+  assert.equal((await call('POST', '/api/devices/register', { login: 'duy@dui.social', password: 'wrong-pass', deviceName: 'Máy B' })).status, 403);
+  const r = await call('POST', '/api/devices/register', { login: ' DUY@dui.social ', password: 'quay-bar-2026', deviceName: 'Máy B' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.device.order_prefix, 'B');
+  // Passwords never reach the till.
+  deviceToken = save;
+  const cfgStaff = (await call('GET', '/api/sync/pull?since=0')).body.config.staff;
+  assert.ok(cfgStaff.every((x: any) => !('pw_hash' in x) && !('login' in x)));
+  // An install from before passwords: the manager PIN still registers devices until someone sets a password.
+  env.DB.raw.prepare('UPDATE staff SET pw_hash=NULL, pw_salt=NULL').run();
+  deviceToken = '';
+  assert.equal((await call('GET', '/api/setup/status')).body.passwordLogin, false);
+  assert.equal((await call('POST', '/api/devices/register', { pin: '123456', deviceName: 'Máy C' })).status, 200);
   deviceToken = save;
 });
 await test('Admin routes reject without staff session; login works', async () => {
@@ -106,6 +120,31 @@ await test('Admin routes reject without staff session; login works', async () =>
   const r = await call('POST', '/api/auth/staff', { staffId: ownerId, pin: '123456' });
   staffSession = r.body.session;
   assert.ok(staffSession);
+});
+await test('Owner sets logins and passwords; staff cannot have one; revoke other devices', async () => {
+  assert.equal((await call('PUT', `/api/admin/staff/${ownerId}`, { password: 'short' })).status, 400);
+  assert.equal((await call('PUT', `/api/admin/staff/${ownerId}`, { login: 'duy', password: 'quay-bar-2027' })).status, 200);
+  const me = (await call('GET', '/api/admin/staff')).body.find((x: any) => x.id === ownerId);
+  assert.equal(me.login, 'duy');
+  assert.equal(me.has_password, 1);
+  const st = await call('POST', '/api/admin/staff', { name: 'Tí', role: 'staff', pin: '4321', login: 'ti', password: 'abcdefgh1' });
+  assert.equal(st.status, 400);
+  const mgr = await call('POST', '/api/admin/staff', { name: 'Mai', role: 'manager', pin: '135790', login: 'duy', password: 'abcdefgh1' });
+  assert.equal(mgr.status, 409); // login already taken
+  // Revoke: every other device is signed out.
+  const before = (await call('GET', '/api/admin/devices')).body.filter((d: any) => d.active).length;
+  assert.ok(before >= 3);
+  const rv = await call('POST', '/api/admin/devices/revoke-others');
+  assert.equal(rv.body.revoked, before - 1);
+  const save = deviceToken; deviceToken = '';
+  const nd = await call('POST', '/api/devices/register', { login: 'duy', password: 'quay-bar-2027', deviceName: 'Máy D' });
+  assert.equal(nd.status, 200);
+  deviceToken = save;
+  // Not indexed by search engines.
+  const robots = await worker.fetch(new Request('https://pos.test/robots.txt'), env);
+  assert.match(await robots.text(), /Disallow: \//);
+  const page = await worker.fetch(new Request('https://pos.test/'), env);
+  assert.equal(page.headers.get('x-robots-tag'), 'noindex, nofollow');
 });
 
 let itemId = '';

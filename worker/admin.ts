@@ -1,5 +1,5 @@
 // Back-office CRUD: menu, modifiers, promotions, staff, outlet settings, media, audit log.
-import { hashPin, pinRule, randomHex, validPin } from '../shared/crypto';
+import { hashPin, normalizeLogin, passwordRule, pinRule, randomHex, validLogin, validPassword, validPin } from '../shared/crypto';
 import type { Role } from '../shared/types';
 import { ulid } from '../shared/util';
 import { all, auditStmt, batch, body, type Ctx, first, HttpError, json, need, now, requireRole, stmt } from './http';
@@ -140,7 +140,7 @@ export async function setPromoItems(c: Ctx) {
 
 const STAFF_SAFE = 'id,name,role,active,max_discount_pct,cash_out_limit,created_at,updated_at';
 /** The owner also sees pay rates. */
-const staffCols = (c: Ctx) => (c.staff?.role === 'owner' ? STAFF_SAFE + ',hourly_rate' : STAFF_SAFE);
+const staffCols = (c: Ctx) => (c.staff?.role === 'owner' ? STAFF_SAFE + ',hourly_rate,login,(pw_hash IS NOT NULL) AS has_password' : STAFF_SAFE + ',(pw_hash IS NOT NULL) AS has_password');
 
 export async function listStaff(c: Ctx) {
   requireRole(c, 'owner', 'manager');
@@ -149,7 +149,7 @@ export async function listStaff(c: Ctx) {
 
 export async function saveStaff(c: Ctx) {
   requireRole(c, 'owner');
-  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number }>(c);
+  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number; login?: string | null; password?: string }>(c);
   if (b.hourly_rate !== undefined) need(Number.isInteger(b.hourly_rate) && b.hourly_rate >= 0 && b.hourly_rate <= 10_000_000, 400, 'Lương giờ không hợp lệ');
   const id = c.params.id || ulid();
   const existing = c.params.id ? await first<{ role: Role; active: number }>(c.env, 'SELECT role,active FROM staff WHERE id=? AND deleted_at IS NULL', id) : null;
@@ -182,10 +182,32 @@ export async function saveStaff(c: Ctx) {
       vals.push(salt, await hashPin(b.pin, salt));
       stmts.push(stmt(c.env, 'DELETE FROM staff_session WHERE staff_id=?', id));
     }
-    need(sets.length, 400, 'Không có gì để cập nhật');
-    stmts.push(stmt(c.env, `UPDATE staff SET ${sets.join(',')}, updated_at=? WHERE id=?`, ...vals, t, id));
+    need(sets.length || b.login !== undefined || b.password, 400, 'Không có gì để cập nhật');
+    stmts.push(stmt(c.env, `UPDATE staff SET ${[...sets, 'updated_at=?'].join(',')} WHERE id=?`, ...vals, t, id));
   }
-  const safe = { ...b, pin: b.pin ? '••••' : undefined };
+  // Login + password (owner/manager only; staff sign in with their PIN on registered devices).
+  const role = b.role ?? existing?.role;
+  if (role === 'staff' && !b.password && !b.login) b.login = undefined; // nothing to set for a PIN-only staff member
+  if (b.login !== undefined || b.password) {
+    need(role !== 'staff', 400, 'Chỉ chủ quán và quản lý có tài khoản đăng nhập');
+    if (b.login !== undefined && b.login !== null && b.login !== '') {
+      need(validLogin(b.login), 400, 'Email hoặc tên đăng nhập không hợp lệ (3–64 ký tự, không dấu, không khoảng trắng)');
+      const taken = await first(c.env, 'SELECT id FROM staff WHERE login=? AND id<>?', normalizeLogin(b.login), id);
+      need(!taken, 409, 'Tên đăng nhập này đã có người dùng');
+      stmts.push(stmt(c.env, 'UPDATE staff SET login=? WHERE id=?', normalizeLogin(b.login), id));
+    } else if (b.login === null || b.login === '') {
+      stmts.push(stmt(c.env, 'UPDATE staff SET login=NULL, pw_salt=NULL, pw_hash=NULL WHERE id=?', id));
+    }
+    if (b.password) {
+      need(validPassword(b.password), 400, passwordRule);
+      const hasLogin = (b.login && b.login !== '') || (await first<{ login: string | null }>(c.env, 'SELECT login FROM staff WHERE id=?', id))?.login;
+      need(hasLogin, 400, 'Đặt tên đăng nhập trước khi đặt mật khẩu');
+      const ps = randomHex(8);
+      stmts.push(stmt(c.env, 'UPDATE staff SET pw_salt=?, pw_hash=? WHERE id=?', ps, await hashPin(b.password, ps), id));
+    }
+  }
+  if (role === 'staff' && existing && existing.role !== 'staff') stmts.push(stmt(c.env, 'UPDATE staff SET login=NULL, pw_salt=NULL, pw_hash=NULL WHERE id=?', id));
+  const safe = { ...b, pin: b.pin ? '••••' : undefined, password: b.password ? '••••' : undefined };
   stmts.push(auditStmt(c.env, { action: existing ? 'staff_update' : 'staff_create', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, after: safe }, ulid()));
   await batch(c.env, stmts);
   return json(await first(c.env, `SELECT ${staffCols(c)} FROM staff WHERE id=?`, id));
@@ -221,13 +243,25 @@ export async function deleteStaff(c: Ctx) {
   const archived = (hist?.n || 0) > 0;
   await batch(c.env, [
     archived
-      ? stmt(c.env, 'UPDATE staff SET active=0, deleted_at=?, updated_at=? WHERE id=?', t, t, id)
+      ? stmt(c.env, 'UPDATE staff SET active=0, deleted_at=?, login=NULL, pw_salt=NULL, pw_hash=NULL, updated_at=? WHERE id=?', t, t, id)
       : stmt(c.env, 'DELETE FROM staff WHERE id=?', id),
     stmt(c.env, 'DELETE FROM staff_session WHERE staff_id=?', id),
     stmt(c.env, 'DELETE FROM work_schedule WHERE staff_id=? AND day >= ?', id, today),
     auditStmt(c.env, { action: 'staff_delete', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, before: { name: s.name, role: s.role }, after: { archived } }, ulid()),
   ]);
   return json({ ok: true, archived });
+}
+
+/** Sign out every other device (lost phone, leaked password). They must be registered again. */
+export async function revokeOtherDevices(c: Ctx) {
+  requireRole(c, 'owner');
+  const n = await first<{ n: number }>(c.env, 'SELECT COUNT(*) n FROM device WHERE id<>? AND active=1', c.device!.id);
+  await batch(c.env, [
+    stmt(c.env, 'UPDATE device SET active=0, updated_at=? WHERE id<>? AND active=1', now(), c.device!.id),
+    stmt(c.env, 'DELETE FROM staff_session WHERE device_id<>?', c.device!.id),
+    auditStmt(c.env, { action: 'devices_revoke', entity: 'device', actor_id: c.staff!.id, device_id: c.device!.id, after: { revoked: n?.n ?? 0 } }, ulid()),
+  ]);
+  return json({ ok: true, revoked: n?.n ?? 0 });
 }
 
 // ----- outlet -----

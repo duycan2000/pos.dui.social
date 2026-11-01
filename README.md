@@ -18,7 +18,7 @@ npm run deploy                             # build + migrate D1 + deploy
 Mở link `*.workers.dev` trên điện thoại Android bằng Chrome → menu ⋮ → "Thêm vào màn hình chính".
 
 1. Máy đầu tiên: màn **Thiết lập lần đầu** tạo quán, tài khoản chủ quán (PIN 6 số) và Máy A.
-2. Máy thứ hai, laptop: mở cùng link, chủ quán nhập PIN để đăng ký (Máy B, C…). Mã đơn theo máy: A-001, B-001.
+2. Máy thứ hai, laptop: mở cùng link, đăng nhập bằng tài khoản (email/tên + mật khẩu) của chủ quán hoặc quản lý (Máy B, C…). Mã đơn theo máy: A-001, B-001. Sau đó máy nhớ đăng nhập; nhân viên chỉ chọn tên + PIN.
 3. Vào **Quản trị**: nhập món, gắn nhóm tuỳ chọn, chọn 5 món signature trong **Khuyến mãi**, nhập tài khoản **VietQR** trong **Cài đặt**, thêm nhân viên.
 
 ## App Android
@@ -118,6 +118,8 @@ Tách bill theo món/người, đặt bàn trước, giảm giá thủ công, ho
 - **Đóng két cần mạng**, để cộng tiền mặt từ tất cả máy. Bán hàng thì không cần.
 - **Chạy được trên Workers Free** (10 ms CPU mỗi request). Vì vậy PIN được băm nhẹ (PBKDF2 2.000 vòng). Bù lại:
   - Chủ quán và quản lý bắt buộc PIN 6 số; nhân viên 4–6 số.
+  - Thêm máy mới cần tài khoản + mật khẩu của chủ quán/quản lý (từ v0.9.0), nên lộ PIN không đủ để vào từ máy lạ. Quản trị › Thiết bị có "Đăng xuất tất cả máy khác".
+  - App chặn công cụ tìm kiếm (robots.txt + noindex).
   - Trên server, sai PIN 5 lần thì khoá 15 phút (theo nhân viên, và theo IP khi đăng ký máy).
   - Mã băm PIN được lưu trên máy để đăng nhập offline, nên ai lấy được điện thoại đã mở khoá vẫn có thể dò PIN. Khoá máy mất ngay trong Quản trị › Thiết bị và đổi PIN quản lý.
   - Mã băm ghi kèm số vòng, nên sau này lên gói trả phí có thể tăng lên mà không phải đặt lại PIN.

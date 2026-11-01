@@ -8,7 +8,7 @@ export async function assertNotLocked(env: Env, key: string) {
   const row = await first<{ locked_until: number }>(env, 'SELECT locked_until FROM auth_throttle WHERE key=?', key);
   if (row && row.locked_until > now()) {
     const mins = Math.ceil((row.locked_until - now()) / 60000);
-    throw new HttpError(429, `Nhập sai PIN quá nhiều lần. Thử lại sau ${mins} phút.`);
+    throw new HttpError(429, `Nhập sai quá nhiều lần. Thử lại sau ${mins} phút.`);
   }
 }
 

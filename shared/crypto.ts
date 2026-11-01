@@ -52,3 +52,17 @@ export function validPin(pin: string, role: 'owner' | 'manager' | 'staff' = 'sta
 export function pinRule(role: 'owner' | 'manager' | 'staff'): string {
   return role === 'staff' ? 'PIN 4–6 chữ số' : 'PIN chủ quán/quản lý phải đủ 6 chữ số';
 }
+
+/** Owner/manager password (used to register devices). Same hash format as PINs; length is the strength. */
+export function validPassword(pw: string): boolean {
+  return typeof pw === 'string' && pw.length >= 8 && pw.length <= 128 && !/^\d+$/.test(pw);
+}
+export const passwordRule = 'Mật khẩu ít nhất 8 ký tự, không chỉ toàn số';
+
+/** Login name: an email or a simple username, compared in lower case. */
+export function normalizeLogin(login: string): string {
+  return (login || '').trim().toLowerCase();
+}
+export function validLogin(login: string): boolean {
+  return /^[a-z0-9._@+-]{3,64}$/.test(normalizeLogin(login));
+}

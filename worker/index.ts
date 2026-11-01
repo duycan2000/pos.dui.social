@@ -2,7 +2,7 @@
 import * as admin from './admin';
 import * as bank from './bank';
 import * as demo from './demo';
-import { needsSetup, registerDevice, resolveDevice, resolveStaff, setup, staffLogin } from './auth';
+import { registerDevice, resolveDevice, resolveStaff, setup, setupStatus, staffLogin } from './auth';
 import * as fin from './finance';
 import { type Ctx, type Env, HttpError, json, Router } from './http';
 import * as inv from './inventory';
@@ -11,7 +11,7 @@ import { closeDrawer, getZReport, pull, push } from './sync';
 
 const r = new Router()
   .add('GET', '/api/health', 'none', () => json({ ok: true }))
-  .add('GET', '/api/setup/status', 'none', async (c) => json({ needsSetup: await needsSetup(c.env) }))
+  .add('GET', '/api/setup/status', 'none', setupStatus)
   .add('POST', '/api/setup', 'none', setup)
   .add('POST', '/api/devices/register', 'none', registerDevice)
   .add('GET', '/api/public/menu', 'none', admin.publicMenu)
@@ -36,6 +36,7 @@ const r = new Router()
   .add('PUT', '/api/admin/outlet', 'staff', admin.saveOutlet)
   .add('GET', '/api/admin/devices', 'staff', admin.listDevices)
   .add('PUT', '/api/admin/devices/:id', 'staff', admin.setDeviceActive)
+  .add('POST', '/api/admin/devices/revoke-others', 'staff', admin.revokeOtherDevices)
   .add('GET', '/api/admin/audit', 'staff', admin.listAudit)
   .add('GET', '/api/admin/demo', 'staff', demo.status)
   .add('POST', '/api/admin/demo/seed', 'staff', demo.seed)
@@ -92,6 +93,12 @@ const r = new Router()
  */
 export const ANDROID_PACKAGE = 'social.dui.pos';
 export const ANDROID_SHA256 = 'B9:42:89:A5:BA:CF:8A:F5:8F:60:D3:B7:C1:F5:CC:B0:7E:D0:FD:C9:9E:8D:6E:FC:53:38:2A:2C:5A:1A:71:00';
+function noindex(res: Response) {
+  const r = new Response(res.body, res);
+  r.headers.set('x-robots-tag', 'noindex, nofollow');
+  return r;
+}
+
 function assetLinks() {
   return new Response(JSON.stringify([{
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -103,8 +110,10 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === '/.well-known/assetlinks.json') return assetLinks();
+    // Keep the POS out of Google and other search engines.
+    if (url.pathname === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain', 'x-robots-tag': 'noindex, nofollow' } });
     if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/media/')) {
-      return env.ASSETS.fetch(req);
+      return noindex(await env.ASSETS.fetch(req));
     }
     const m = r.match(req.method, url.pathname);
     if (!m) return json({ error: 'Không tìm thấy' }, 404);
@@ -112,7 +121,7 @@ export default {
     try {
       if (m.route.auth !== 'none') await resolveDevice(c);
       if (m.route.auth === 'staff') await resolveStaff(c);
-      return await m.route.handler(c);
+      return noindex(await m.route.handler(c));
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message }, e.status);
       console.error(e);

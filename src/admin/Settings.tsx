@@ -85,6 +85,7 @@ interface Device { id: string; name: string; order_prefix: string; active: numbe
 export function Devices() {
   const list = useLoad(() => get<Device[]>('/api/admin/devices'));
   const me = useStore((s) => s.config?.device.id);
+  const [askRevoke, setAskRevoke] = useState(false);
   return (
     <Page title="Thiết bị" sub="Thêm máy: mở app trên máy mới, chủ/quản lý nhập PIN để đăng ký">
       <Loading error={list.error} loading={list.loading && !list.data} />
@@ -100,6 +101,10 @@ export function Devices() {
         ))}
       </div>
       <p className="tiny faint">Máy mất hoặc bị đánh cắp: khoá ở đây, máy đó không đồng bộ được nữa.</p>
+      <button className="btn danger" onClick={() => setAskRevoke(true)}>Đăng xuất tất cả máy khác</button>
+      <p className="tiny faint" style={{ margin: 0 }}>Dùng khi nghi lộ mật khẩu hoặc PIN: mọi máy trừ máy này phải đăng nhập lại bằng tài khoản + mật khẩu.</p>
+      {askRevoke && <Confirm title="Đăng xuất tất cả máy khác?" danger okText="Đăng xuất" text="Các máy khác phải đăng nhập lại bằng tài khoản + mật khẩu ngay. Đơn chưa đồng bộ trên máy đó vẫn còn và sẽ gửi lên sau khi đăng nhập lại."
+        onCancel={() => setAskRevoke(false)} onOk={async () => { setAskRevoke(false); const r = await run(() => post<{ revoked: number }>('/api/admin/devices/revoke-others')); if (r) { run(async () => 1, `Đã đăng xuất ${r.revoked} máy`); list.reload(); } }} />}
     </Page>
   );
 }

@@ -3,7 +3,9 @@ import { useEffect } from 'react';
 import { setStaffSession } from '../lib/api';
 import { getManagerSession, isManager, navigate, useStore } from '../lib/store';
 import { runSync } from '../lib/sync';
+import { get } from '../lib/api';
 import { Icon, TopBar } from '../ui';
+import { useLoad } from './common';
 import Audit from './Audit';
 import BankTxns from './BankTxns';
 import Costing from './Costing';
@@ -122,11 +124,18 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
 
 function Home({ role }: { role: Role }) {
   const staff = useStore((s) => s.staff)!;
+  const people = useLoad(() => get<{ id: string; has_password: number }[]>('/api/admin/staff'));
+  const noPassword = people.data && !people.data.find((p) => p.id === staff.id)?.has_password;
   return (
     <>
       <TopBar title="Quản trị" sub={`${staff.name} · ${role === 'owner' ? 'Chủ quán' : 'Quản lý'}`} onBack={() => navigate('order')} />
       <div className="content">
         <div className="content-inner">
+          {noPassword && role === 'owner' && (
+            <button className="banner danger" style={{ border: 0, textAlign: 'left', width: '100%' }} onClick={() => navigate('admin/staff')}>
+              <Icon name="lock" size={18} /><span><b>Bảo mật:</b> bạn chưa có tài khoản + mật khẩu. Máy lạ vẫn đăng ký được chỉ bằng PIN quản lý. Chạm để đặt email/tên đăng nhập và mật khẩu cho mình (Nhân viên › tên bạn).</span>
+            </button>
+          )}
           {NAV.map((g) => {
             const items = g.items.filter((i) => i[4].includes(role));
             if (!items.length) return null;

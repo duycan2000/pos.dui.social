@@ -1,5 +1,5 @@
 // Setup, device registration, staff login and the POS config snapshot.
-import { hashPin, pinRule, randomHex, sha256, validPin, verifyPin } from '../shared/crypto';
+import { hashPin, normalizeLogin, passwordRule, pinRule, randomHex, sha256, validLogin, validPassword, validPin, verifyPin } from '../shared/crypto';
 import type { PosConfig, Role } from '../shared/types';
 import { ulid } from '../shared/util';
 import { all, auditStmt, batch, body, type Ctx, type Env, first, HttpError, json, need, now, stmt } from './http';
@@ -10,6 +10,17 @@ const STAFF_SESSION_MS = 12 * 3600 * 1000;
 export async function needsSetup(env: Env): Promise<boolean> {
   const row = await first<{ n: number }>(env, 'SELECT COUNT(*) AS n FROM staff');
   return !row || row.n === 0;
+}
+
+/** True once any active owner/manager has a password: from then on a new device needs login + password. */
+export async function passwordLogin(env: Env): Promise<boolean> {
+  const row = await first<{ n: number }>(env, "SELECT COUNT(*) AS n FROM staff WHERE pw_hash IS NOT NULL AND active=1 AND deleted_at IS NULL AND role IN ('owner','manager')");
+  return (row?.n ?? 0) > 0;
+}
+
+export async function setupStatus(c: Ctx) {
+  const setup = await needsSetup(c.env);
+  return json({ needsSetup: setup, passwordLogin: setup ? true : await passwordLogin(c.env) });
 }
 
 async function newDevice(env: Env, outletId: string, name: string) {
@@ -30,9 +41,12 @@ async function newDevice(env: Env, outletId: string, name: string) {
 /** First run only: create the outlet, the owner, starter menu structure and this device. */
 export async function setup(c: Ctx) {
   need(await needsSetup(c.env), 409, 'Hệ thống đã được thiết lập');
-  const b = await body<{ outletName: string; ownerName: string; ownerPin: string; deviceName: string }>(c);
+  const b = await body<{ outletName: string; ownerName: string; ownerPin: string; deviceName: string; ownerLogin: string; ownerPassword: string }>(c);
   need(b.outletName?.trim() && b.ownerName?.trim(), 400, 'Thiếu tên quán hoặc tên chủ');
   need(validPin(b.ownerPin, 'owner'), 400, pinRule('owner'));
+  need(validLogin(b.ownerLogin), 400, 'Email hoặc tên đăng nhập không hợp lệ');
+  need(validPassword(b.ownerPassword), 400, passwordRule);
+  const pwSalt = randomHex(8);
   const env = c.env;
   const t = now();
   const outletId = ulid();
@@ -41,8 +55,8 @@ export async function setup(c: Ctx) {
   const stmts: D1PreparedStatement[] = [
     stmt(env, 'INSERT INTO outlet (id,name,settings_json,created_at,updated_at) VALUES (?,?,?,?,?)', outletId, b.outletName.trim(),
       JSON.stringify({ cost_alert_pct: 30, done_return_seconds: 5, tax_threshold_year: 1000000000 }), t, t),
-    stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,1,100,100000000,?,?)',
-      ownerId, outletId, b.ownerName.trim(), salt, await hashPin(b.ownerPin, salt), 'owner', t, t),
+    stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,login,pw_salt,pw_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,1,100,100000000,?,?,?,?,?)',
+      ownerId, outletId, b.ownerName.trim(), salt, await hashPin(b.ownerPin, salt), 'owner', normalizeLogin(b.ownerLogin), pwSalt, await hashPin(b.ownerPassword, pwSalt), t, t),
   ];
   const cats = [['Signature', 'Signature'], ['Mocktail', 'Mocktail'], ['Shots', 'Shots'], ['Other', 'Khác']];
   cats.forEach(([en, vi], i) => stmts.push(stmt(env, 'INSERT INTO category (id,name_en,name_vi,sort,active,created_at,updated_at) VALUES (?,?,?,?,1,?,?)', ulid(), en, vi, i, t, t)));
@@ -69,20 +83,40 @@ export async function setup(c: Ctx) {
 
 async function findStaffByPin(env: Env, pin: string, roles: Role[]) {
   const rows = await all<{ id: string; name: string; role: Role; pin_salt: string; pin_hash: string }>(
-    env, `SELECT id,name,role,pin_salt,pin_hash FROM staff WHERE active=1 AND role IN (${roles.map(() => '?').join(',')})`, ...roles);
+    env, `SELECT id,name,role,pin_salt,pin_hash FROM staff WHERE active=1 AND deleted_at IS NULL AND role IN (${roles.map(() => '?').join(',')})`, ...roles);
   for (const r of rows) if (await verifyPin(pin, r.pin_salt, r.pin_hash)) return r;
   return null;
 }
 
-/** Add another device (2nd Android, laptop for back office). Needs an owner/manager PIN. */
+/**
+ * Add another device (2nd Android, laptop for back office). Needs an owner/manager login + password.
+ * Installs from before passwords existed keep the old manager-PIN way until someone sets a password.
+ */
 export async function registerDevice(c: Ctx) {
-  const b = await body<{ pin: string; deviceName: string }>(c);
-  need(validPin(b.pin, 'manager'), 400, pinRule('manager'));
-  const key = 'register:' + clientKey(c.req);
-  await assertNotLocked(c.env, key);
-  const approver = await findStaffByPin(c.env, b.pin, ['owner', 'manager']);
-  if (!approver) { await recordFail(c.env, key); throw new HttpError(403, 'PIN không đúng hoặc không phải quản lý'); }
-  await recordSuccess(c.env, key);
+  const b = await body<{ login?: string; password?: string; pin?: string; deviceName: string }>(c);
+  const ipKey = 'register:' + clientKey(c.req);
+  await assertNotLocked(c.env, ipKey);
+  let approver: { id: string } | null = null;
+  if (await passwordLogin(c.env)) {
+    const login = normalizeLogin(b.login || '');
+    need(login && b.password, 400, 'Nhập email/tên đăng nhập và mật khẩu');
+    const userKey = 'login:' + login;
+    await assertNotLocked(c.env, userKey);
+    const s = await first<{ id: string; pw_salt: string; pw_hash: string }>(c.env,
+      "SELECT id,pw_salt,pw_hash FROM staff WHERE login=? AND active=1 AND deleted_at IS NULL AND role IN ('owner','manager') AND pw_hash IS NOT NULL", login);
+    if (!s || !(await verifyPin(b.password!, s.pw_salt, s.pw_hash))) {
+      await recordFail(c.env, ipKey);
+      await recordFail(c.env, userKey);
+      throw new HttpError(403, 'Sai tên đăng nhập hoặc mật khẩu');
+    }
+    await recordSuccess(c.env, userKey);
+    approver = s;
+  } else {
+    need(validPin(b.pin || '', 'manager'), 400, pinRule('manager'));
+    approver = await findStaffByPin(c.env, b.pin!, ['owner', 'manager']);
+    if (!approver) { await recordFail(c.env, ipKey); throw new HttpError(403, 'PIN không đúng hoặc không phải quản lý'); }
+  }
+  await recordSuccess(c.env, ipKey);
   const outlet = await first<{ id: string }>(c.env, 'SELECT id FROM outlet LIMIT 1');
   need(outlet, 409, 'Chưa thiết lập quán');
   const d = await newDevice(c.env, outlet.id, b.deviceName?.trim() || 'Thiết bị mới');
