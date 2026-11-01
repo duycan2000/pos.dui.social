@@ -4,7 +4,8 @@
 import { Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { vnd, vndShort } from '../../shared/util';
 
-export const SERIES = ['#3987e5', '#d95926', '#199e70'];
+/** Categorical slots; light/dark steps live in styles.css (--s1..--s3). */
+export const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
 const ACCENT = 'var(--accent)';
 
 function niceMax(v: number) {

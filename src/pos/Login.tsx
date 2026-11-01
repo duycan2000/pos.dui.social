@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { StaffPublic } from '../../shared/types';
 import { login, navigate, useStore } from '../lib/store';
-import { appVersion, Icon, PinPad } from '../ui';
+import { appVersion, Icon, PinPad, ThemeToggle } from '../ui';
 
 const ROLE: Record<string, string> = { owner: 'Chủ quán', manager: 'Quản lý', staff: 'Nhân viên' };
 
@@ -23,7 +23,7 @@ export default function Login() {
   return (
     <div className="login">
       <section className="login-brand">
-        <div className="brand" style={{ fontSize: 28 }}>{cfg.outlet.name.toUpperCase()}</div>
+        <div className="row between"><div className="brand" style={{ fontSize: 28 }}>{cfg.outlet.name.toUpperCase()}</div><ThemeToggle /></div>
         <p className="muted" style={{ margin: 0 }}>{cfg.device.name} · mã đơn {cfg.device.order_prefix}</p>
         <span className="small muted row"><span className={'dot' + (net.online ? '' : ' off')} />{net.online ? 'Đang kết nối' : 'Offline — vẫn bán được'}</span>
         <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => navigate('clock')}><Icon name="clock" size={18} />Chấm công vào / ra ca</button>

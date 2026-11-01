@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.13.0 — 01/11/2026
+- Giao diện sáng (nền trắng, chữ tối) bên cạnh giao diện tối "Quầy đêm". Đổi bằng biểu tượng mặt trời/mặt trăng ở màn đăng nhập, mục "Giao diện sáng/tối" trong menu ☰, hoặc Cài đặt › Giao diện (Tối / Sáng / Theo máy). Mỗi máy nhớ lựa chọn riêng.
+
 ## 0.12.0 — 01/11/2026
 - Sổ doanh thu bán hàng hóa, dịch vụ theo Mẫu S1a-HKD (Thông tư 152/2025/TT-BTC): giữ đúng bố cục mẫu (A4 ngang, đầu trang lặp lại mỗi trang, cột A/B/1, Tổng cộng, chữ ký người đại diện). Chọn tháng/quý/năm, mỗi đơn một dòng hoặc gộp theo ngày; In / Lưu PDF và Excel.
 - Cài đặt › Thông tin hộ kinh doanh: tên hộ/công ty, người đại diện, địa chỉ, địa điểm kinh doanh, mã số thuế, diễn giải.

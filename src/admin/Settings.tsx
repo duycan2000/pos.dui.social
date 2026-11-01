@@ -4,7 +4,8 @@ import type { Outlet, OutletSettings } from '../../shared/types';
 import { parseSettings } from '../../shared/util';
 import { get, post, put } from '../lib/api';
 import { runSync } from '../lib/sync';
-import { Confirm } from '../ui';
+import { Confirm, Segmented } from '../ui';
+import { setTheme, themeChoice, type ThemeChoice, useTheme } from '../lib/theme';
 import { useStore } from '../lib/store';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
 
@@ -34,6 +35,9 @@ export function Settings() {
   return (
     <Page title="Cài đặt" footer={owner ? <button className="btn primary lg block" onClick={save}>Lưu cài đặt</button> : undefined}>
       {!owner && <div className="banner">Chỉ chủ quán sửa được cài đặt.</div>}
+      <div className="section-title">Giao diện (riêng máy này)</div>
+      <Appearance />
+
       <div className="section-title">Quán</div>
       <div className="form-grid">
         <Text label="Tên quán" value={f.name} onChange={(v) => setF({ ...f, name: v })} />
@@ -181,6 +185,16 @@ function DemoData() {
       </div>
       <p className="tiny faint" style={{ margin: 0 }}>Mọi thứ demo có mã bắt đầu bằng DEMO. Nút xoá chỉ xoá đúng các dữ liệu đó, không đụng tới món, đơn hay cài đặt thật của bạn. Nếu bạn sửa món demo, món đó vẫn bị xoá cùng.</p>
       {askClear && <Confirm title="Xoá sạch dữ liệu demo?" text="Món, nguyên liệu, nhân viên, đơn và chi phí demo sẽ bị xoá vĩnh viễn. Dữ liệu thật được giữ nguyên." okText="Xoá demo" danger onCancel={() => setAskClear(false)} onOk={clear} />}
+    </div>
+  );
+}
+
+function Appearance() {
+  useTheme();
+  return (
+    <div className="col gap12">
+      <Segmented value={themeChoice()} onChange={(v: ThemeChoice) => setTheme(v)} options={[['dark', 'Tối (Quầy đêm)'], ['light', 'Sáng'], ['system', 'Theo máy']]} />
+      <p className="tiny faint" style={{ margin: 0 }}>Mỗi máy chọn riêng. Cũng đổi nhanh được ở màn đăng nhập (biểu tượng mặt trời/mặt trăng) và trong menu ☰.</p>
     </div>
   );
 }

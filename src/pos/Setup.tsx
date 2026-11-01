@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { passwordRule, validLogin, validPassword, validPin } from '../../shared/crypto';
 import { api } from '../lib/api';
 import { completeRegistration, toast } from '../lib/store';
-import { appVersion } from '../ui';
+import { appVersion, ThemeToggle } from '../ui';
 
 function Brand({ sub }: { sub: string }) {
   return (
     <div>
-      <div className="huge accent">DUI SOCIAL</div>
+      <div className="row between"><div className="huge accent">DUI SOCIAL</div><ThemeToggle /></div>
       <p className="muted" style={{ marginBottom: 0 }}>{sub}</p>
     </div>
   );

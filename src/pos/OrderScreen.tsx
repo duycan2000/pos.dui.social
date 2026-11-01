@@ -5,7 +5,7 @@ import type { ChosenOption, Item } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
 import { addToCart, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
-import { appVersion, CAT_COLORS, Icon, Sheet } from '../ui';
+import { appVersion, CAT_COLORS, Icon, Sheet, ThemeToggle } from '../ui';
 import Ticket from './Ticket';
 
 export default function OrderScreen() {
@@ -234,6 +234,7 @@ function MenuDrawer({ onClose, manager, pendingQr, openTabs }: { onClose: () => 
         <button className="navitem" onClick={() => go('clock')}><Icon name="clock" />Chấm công · lịch làm</button>
         <button className="navitem" onClick={() => go('printer')}><Icon name="printer" />Máy in</button>
         <button className="navitem" onClick={() => go('sync')}><Icon name="sync" />Đồng bộ</button>
+        <ThemeToggle withLabel />
         <button className="navitem" onClick={() => go('close')}><Icon name="door" />Kết ca / Đóng két</button>
         {manager && <button className="navitem" onClick={() => go('admin')}><Icon name="settings" />Quản trị</button>}
         <div className="grow" />

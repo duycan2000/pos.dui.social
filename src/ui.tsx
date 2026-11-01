@@ -1,4 +1,5 @@
 // Shared UI: icons, top bar, sheets, PIN pad, amount keypad, segmented control, approval dialog (S18), toast.
+import { resolvedTheme, setTheme, useTheme } from './lib/theme';
 import { type ReactNode, useEffect, useState } from 'react';
 import { verifyPin } from '../shared/crypto';
 import type { StaffPublic } from '../shared/types';
@@ -47,6 +48,8 @@ const paths: Record<string, ReactNode> = {
   move: <><path d="M5 12h14M15 8l4 4-4 4" /><path d="M9 4H5v16h4" /></>,
   merge: <><path d="M6 4v5a5 5 0 0 0 5 5h7" /><path d="M6 20v-2a4 4 0 0 1 4-4" /><path d="M15 11l3 3-3 3" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
   grid: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16M12 4v16" /></>,
 };
@@ -194,7 +197,7 @@ export function ApprovalDialog() {
   return (
     <Sheet middle onClose={() => a.resolve(null)}>
       <div className="row gap12" style={{ marginBottom: 14 }}>
-        <div className="iconbtn" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}><Icon name="lock" /></div>
+        <div className="iconbtn" style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}><Icon name="lock" /></div>
         <div className="col" style={{ gap: 2 }}>
           <h2>{selfApprove ? 'Xác nhận' : 'Quản lý duyệt'}</h2>
           <span className="small muted">{a.title}</span>
@@ -252,4 +255,15 @@ export function appVersion(withTime = false) {
   if (!withTime || typeof __BUILD_TIME__ !== 'string') return 'v' + v;
   const d = new Date(__BUILD_TIME__);
   return `v${v} · build ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Light / dark switch: one tap toggles; used on the login screen and in the menu. */
+export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
+  useTheme();
+  const t = resolvedTheme();
+  const next = t === 'dark' ? 'light' : 'dark';
+  const label = t === 'dark' ? 'Chuyển sang nền sáng' : 'Chuyển sang nền tối';
+  return withLabel
+    ? <button className="navitem" onClick={() => setTheme(next)}><Icon name={t === 'dark' ? 'sun' : 'moon'} />{t === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}</button>
+    : <button className="iconbtn" aria-label={label} title={label} onClick={() => setTheme(next)}><Icon name={t === 'dark' ? 'sun' : 'moon'} /></button>;
 }
