@@ -28,6 +28,8 @@ export function Settings() {
     await run(() => put('/api/admin/outlet', { ...rest, settings_json: JSON.stringify(st) }), 'Đã lưu cài đặt');
     o.reload();
   };
+  const tax = st.tax_info ?? {};
+  const setTax = (p: Partial<NonNullable<OutletSettings['tax_info']>>) => setSt({ ...st, tax_info: { ...tax, ...p } });
   const bin = BANKS.some(([b]) => b === f.vietqr_bank_bin) ? f.vietqr_bank_bin ?? '' : '';
   return (
     <Page title="Cài đặt" footer={owner ? <button className="btn primary lg block" onClick={save}>Lưu cài đặt</button> : undefined}>
@@ -40,6 +42,18 @@ export function Settings() {
         <Num label="Múi giờ (phút so với UTC, VN = 420)" value={f.tz_offset_min} onChange={(v) => setF({ ...f, tz_offset_min: Math.round(v) })} />
       </div>
       <p className="tiny faint" style={{ margin: 0 }}>Đơn trước giờ cut-off (VD 05:00) tính vào ngày hôm trước.</p>
+
+      <div className="section-title">Thông tin hộ kinh doanh (in trên sổ thuế S1a-HKD)</div>
+      <div className="form-grid">
+        <Text label="Hộ / cá nhân kinh doanh (hoặc tên công ty)" value={tax.business_name} onChange={(v) => setTax({ business_name: v })} placeholder="VD: Nguyễn Duy Cần" />
+        <Text label="Người đại diện ký sổ" value={tax.representative} onChange={(v) => setTax({ representative: v })} />
+        <Text label="Mã số thuế" inputMode="numeric" value={tax.tax_code} onChange={(v) => setTax({ tax_code: v.replace(/[^\d-]/g, '') })} />
+        <Text label="Địa chỉ" value={tax.address} onChange={(v) => setTax({ address: v })} placeholder="Số nhà, đường, phường, thành phố" />
+        <Text label="Địa điểm kinh doanh (để trống nếu giống địa chỉ)" value={tax.location} onChange={(v) => setTax({ location: v })} />
+        <Text label="Diễn giải mỗi dòng" value={tax.description} onChange={(v) => setTax({ description: v })} placeholder={`Bán hàng tại cửa hàng ${f.name}`} />
+        <Select label="Cách ghi sổ" value={tax.mode ?? 'order'} onChange={(v) => setTax({ mode: v as 'order' | 'day' })} options={[['order', 'Mỗi đơn một dòng (như mẫu)'], ['day', 'Gộp tổng mỗi ngày một dòng']]} />
+      </div>
+      <p className="tiny faint" style={{ margin: 0 }}>Thông tư 152/2025/TT-BTC cho phép ghi theo từng nghiệp vụ hoặc định kỳ (ngày/tháng) nhưng phải nhất quán. Hỏi kế toán nên dùng mẫu S1a hay mẫu khác theo mức doanh thu của quán.</p>
 
       <div className="section-title">VietQR</div>
       <div className="form-grid">

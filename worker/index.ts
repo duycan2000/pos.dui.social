@@ -1,5 +1,6 @@
 // Dui Social POS — Cloudflare Worker entry: API routes + static app from ./dist.
 import * as admin from './admin';
+import * as an from './analytics';
 import * as bank from './bank';
 import * as demo from './demo';
 import { registerDevice, resolveDevice, resolveStaff, setup, setupStatus, staffLogin } from './auth';
@@ -85,7 +86,10 @@ const r = new Router()
   .add('POST', '/api/fin/ledger', 'staff', fin.addLedger)
   .add('POST', '/api/fin/ledger/:id/void', 'staff', fin.voidLedger)
   .add('GET', '/api/reports/revenue', 'staff', fin.revenueReport)
-  .add('GET', '/api/reports/ytd', 'staff', fin.ytd);
+  .add('GET', '/api/reports/ytd', 'staff', fin.ytd)
+  .add('GET', '/api/reports/s1a', 'staff', an.s1a)
+  .add('GET', '/api/fin/analytics', 'staff', an.analytics)
+  .add('GET', '/api/fin/insights', 'staff', an.insights);
 
 /**
  * Digital Asset Links for the Android app (android/, a Trusted Web Activity). When this matches the app's

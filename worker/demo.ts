@@ -280,7 +280,9 @@ async function seedDay(c: Ctx, o: { id: string; tz_offset_min: number; business_
     }
     if (totals.total > 0 || tip > 0) {
       stmts.push(stmt(env, 'INSERT INTO payment (id,order_id,drawer_session_id,method,amount,tip,tendered,change_given,reference,status,confirmed_by,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        did('PM'), id, drawerId, method, totals.total, tip, tendered, change, method === 'vietqr' ? `DUI X${String(k + 1).padStart(3, '0')}` : null, 'confirmed', staffId, paidAt, paidAt));
+        did('PM'), id, drawerId, method, totals.total, tip, tendered, change, method === 'vietqr' ? `DUI X${String(k + 1).padStart(3, '0')}` : null, 'confirmed',
+        // Transfers are confirmed by the bank webhook; a few by hand, so the analysis page has something to flag.
+        method === 'vietqr' && r() > 0.04 ? null : staffId, paidAt, paidAt));
     }
     stmts.push(stmt(env, `INSERT INTO sale_order (id,outlet_id,device_id,short_code,business_day,staff_id,drawer_session_id,order_type,customer_label,status,subtotal,promo_total,discount_total,comp_total,tip_total,total,cost_total,stock_applied,sent_at,paid_at,void_reason,voided_by,approved_by,voided_at,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,

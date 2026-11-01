@@ -29,6 +29,24 @@ export interface OutletSettings {
   night_premium_pct?: number;
   /** Minutes after the scheduled start before a clock-in counts as late. */
   late_grace_min?: number;
+  /** Business details printed on tax books (Mẫu S1a-HKD). */
+  tax_info?: TaxInfo;
+}
+
+export interface TaxInfo {
+  /** Tên hộ / cá nhân kinh doanh (or company name). */
+  business_name?: string;
+  /** Người đại diện ký sổ. */
+  representative?: string;
+  address?: string;
+  /** Địa điểm kinh doanh (defaults to the address). */
+  location?: string;
+  tax_code?: string;
+  /** Diễn giải on each line, e.g. "Bán hàng tại cửa hàng Dui Social". */
+  description?: string;
+  /** One line per order (like the sample) or one line per day. */
+  mode?: 'order' | 'day';
+  unit?: string;
 }
 
 export interface StaffPublic {

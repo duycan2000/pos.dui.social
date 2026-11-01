@@ -13,7 +13,7 @@ function range(c: Ctx, todayDay: string) {
   return { from, to };
 }
 
-async function periodSummary(env: Env, from: string, to: string) {
+export async function periodSummary(env: Env, from: string, to: string) {
   const [s, pays, ledger, cash] = await Promise.all([
     first<{ n: number; gross: number; promo: number; disc: number; net: number; cogs: number; comp: number; tips: number }>(env,
       "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net, COALESCE(SUM(cost_total),0) cogs, COALESCE(SUM(comp_total),0) comp, COALESCE(SUM(tip_total),0) tips FROM sale_order WHERE status='paid' AND business_day BETWEEN ? AND ?", from, to),

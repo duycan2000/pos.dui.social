@@ -18,6 +18,8 @@ import Promotions from './Promotions';
 import Reports from './Reports';
 import { Devices, Settings } from './Settings';
 import Staff from './Staff';
+import Analytics from './Analytics';
+import S1aBook from './S1aBook';
 import FloorEditor from './FloorEditor';
 import TimeSheet from './TimeSheet';
 
@@ -36,10 +38,12 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/costing', 'Giá vốn', 'Cost %, lãi thật sau BOGO', 'chart', ['owner', 'manager']],
   ] },
   { group: 'Tài chính', items: [
-    ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ, tip', 'chart', ['owner', 'manager']],
+    ['admin/analytics', 'Phân tích & cảnh báo', 'Lãi lỗ tuần/tháng, dấu hiệu thất thoát, biểu đồ', 'chart', ['owner', 'manager']],
+    ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ, tip', 'wallet', ['owner', 'manager']],
     ['admin/ledger', 'Sổ thu chi', 'Lương, mặt bằng, điện nước', 'wallet', ['owner', 'manager']],
     ['admin/bank', 'Giao dịch ngân hàng', 'Chuyển khoản tự xác nhận', 'bank', ['owner', 'manager']],
-    ['admin/reports', 'Báo cáo thuế', 'Tháng / quý / năm, Excel', 'receipt', ['owner', 'manager']],
+    ['admin/s1a', 'Sổ doanh thu S1a-HKD', 'Mẫu sổ thuế, in / PDF', 'receipt', ['owner', 'manager']],
+    ['admin/reports', 'Báo cáo doanh thu', 'Tháng / quý / năm, Excel', 'list', ['owner', 'manager']],
   ] },
   { group: 'Hệ thống', items: [
     ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', ['owner', 'manager']],
@@ -109,6 +113,8 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
     case 'stocktakes': return <Stocktakes id={id} />;
     case 'costing': return <Costing />;
     case 'finance': return <Dashboard />;
+    case 'analytics': return <Analytics />;
+    case 's1a': return <S1aBook />;
     case 'ledger': return <Ledger />;
     case 'bank': return <BankTxns />;
     case 'reports': return <Reports />;

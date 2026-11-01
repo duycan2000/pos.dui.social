@@ -609,6 +609,23 @@ await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe t
   assert.equal(neg, 0, 'demo stock went negative');
   const cost = (await call('GET', '/api/inv/costing')).body;
   assert.ok(cost.items.filter((i: any) => i.has_recipe).length >= 17);
+  // S1a-HKD book, charts and the monthly verdict on the demo month.
+  const s1 = (await call('GET', `/api/reports/s1a?from=${from}&to=${to}`)).body;
+  assert.equal(s1.rows.length, dash.current.orders);
+  assert.equal(s1.total, dash.current.revenue);
+  const s1d = (await call('GET', `/api/reports/s1a?from=${from}&to=${to}&mode=day`)).body;
+  assert.equal(s1d.total, s1.total);
+  assert.ok(s1d.rows.length >= 28);
+  const an = (await call('GET', `/api/fin/analytics?from=${from}&to=${to}`)).body;
+  assert.ok(an.daily.length >= 28 && an.heat.length > 0 && an.items.length > 0 && an.months.length >= 1);
+  const ins = await call('GET', `/api/fin/insights?period=month&date=${from}`);
+  assert.equal(ins.status, 200, JSON.stringify(ins.body));
+  assert.equal(ins.body.summary.revenue, dash.current.revenue);
+  assert.match(ins.body.findings[0].title, /LÃI|LỖ/);
+  assert.ok(ins.body.findings.some((x: any) => x.area === 'Huỷ đơn'));
+  assert.ok(ins.body.findings.some((x: any) => x.area === 'Két tiền'));
+  const wk = await call('GET', `/api/fin/insights?period=week&date=${from}`);
+  assert.equal(wk.status, 200);
   const ts = (await call('GET', `/api/time/sheet?from=${from}&to=${to}`)).body;
   assert.ok(ts.entries.filter((e: any) => e.id.startsWith('DEMO')).length >= 50 && ts.schedule.length >= 50);
   assert.equal((await call('POST', '/api/admin/demo/clear')).status, 200);

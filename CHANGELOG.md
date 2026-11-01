@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.12.0 — 01/11/2026
+- Sổ doanh thu bán hàng hóa, dịch vụ theo Mẫu S1a-HKD (Thông tư 152/2025/TT-BTC): giữ đúng bố cục mẫu (A4 ngang, đầu trang lặp lại mỗi trang, cột A/B/1, Tổng cộng, chữ ký người đại diện). Chọn tháng/quý/năm, mỗi đơn một dòng hoặc gộp theo ngày; In / Lưu PDF và Excel.
+- Cài đặt › Thông tin hộ kinh doanh: tên hộ/công ty, người đại diện, địa chỉ, địa điểm kinh doanh, mã số thuế, diễn giải.
+- Trang Phân tích & cảnh báo: kết luận tuần/tháng (lãi hay lỗ, so với kỳ trước) và các dấu hiệu thất thoát/gian lận: huỷ đơn (nhất là huỷ sau khi đã thu tiền), người huỷ nhiều bất thường, ly mời, bỏ món đã gửi, két thiếu lặp lại, chi két không ảnh, chuyển khoản xác nhận tay, hao hụt kiểm kê, giá vốn vượt mục tiêu, chi phí lương/giờ công, đơn treo.
+- Biểu đồ: doanh thu theo ngày (so với kỳ trước), 12 tháng doanh thu và lãi, giờ đông khách, trung bình theo thứ, cách trả tiền, doanh thu theo nhân viên, món bán chạy.
+
 ## 0.11.0 — 01/11/2026
 - Tắt "kéo xuống để tải lại" của Chrome trong app (cả app Android).
 - Nếu app vẫn bị tải lại (mất sóng, Android đóng app chạy nền…), người đang đăng nhập được giữ nguyên và quay về đúng màn đang làm (đơn đang chọn vẫn còn). Chỉ khi bấm "Khoá máy · đổi người" hoặc để yên quá 8 giờ thì mới phải nhập PIN lại.
