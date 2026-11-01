@@ -245,3 +245,11 @@ export function Empty({ children, icon = 'receipt' }: { children: ReactNode; ico
 
 /** Category accent colours for tiles and chips, by category order. */
 export const CAT_COLORS = ['#f5a524', '#f472b6', '#34d399', '#60a5fa', '#a78bfa', '#fb923c', '#22d3ee', '#a3e635'];
+
+/** "v0.7.0 · 01/11 11:20" — app version and build time, shown on the login screen and in the menu. */
+export function appVersion(withTime = false) {
+  const v = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
+  if (!withTime || typeof __BUILD_TIME__ !== 'string') return 'v' + v;
+  const d = new Date(__BUILD_TIME__);
+  return `v${v} · build ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}

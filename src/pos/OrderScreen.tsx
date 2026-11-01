@@ -5,7 +5,7 @@ import type { ChosenOption, Item } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
 import { addToCart, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
-import { CAT_COLORS, Icon, Sheet } from '../ui';
+import { appVersion, CAT_COLORS, Icon, Sheet } from '../ui';
 import Ticket from './Ticket';
 
 export default function OrderScreen() {
@@ -235,6 +235,7 @@ function MenuDrawer({ onClose, manager, pendingQr, openTabs }: { onClose: () => 
         {manager && <button className="navitem" onClick={() => go('admin')}><Icon name="settings" />Quản trị</button>}
         <div className="grow" />
         <button className="navitem" onClick={() => { onClose(); lock(); }}><Icon name="lock" />Khoá máy · đổi người</button>
+        <span className="tiny faint" style={{ padding: '4px 16px 8px' }}>Dui POS {appVersion()}</span>
       </nav>
       <div className="shade" onClick={onClose} />
     </div>

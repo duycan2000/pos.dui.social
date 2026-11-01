@@ -125,9 +125,13 @@ export async function sendBytes(bytes: Uint8Array) {
 // ---------- documents ----------
 
 export type PLine =
-  | { t: 'text'; text: string; align?: 'left' | 'center' | 'right'; size?: 'sm' | 'md' | 'lg' | 'xl'; bold?: boolean }
+  | { t: 'text'; text: string; align?: 'left' | 'center' | 'right'; size?: 'sm' | 'md' | 'lg' | 'xl'; bold?: boolean; spacing?: number }
   | { t: 'row'; left: string; right: string; size?: 'sm' | 'md' | 'lg'; bold?: boolean }
-  | { t: 'hr'; dashed?: boolean }
+  /** Item line: qty column, wrapped name, amount on the right; optional detail line underneath. */
+  | { t: 'item'; qty: string; name: string; right: string; detail?: string }
+  /** White text on a black band (e.g. PAID / NOT PAID). */
+  | { t: 'band'; text: string }
+  | { t: 'hr'; dashed?: boolean; heavy?: boolean }
   | { t: 'space'; h?: number }
   | { t: 'image'; canvas: HTMLCanvasElement; width?: number };
 
@@ -144,6 +148,17 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number): string[
   }
   if (cur) out.push(cur);
   return out.length ? out : [''];
+}
+
+/** Letter-spaced text (canvas letterSpacing is not on every Android WebView/Chrome version). */
+function spaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, gap: number) {
+  const align = ctx.textAlign;
+  const chars = [...text];
+  const total = chars.reduce((s, ch) => s + ctx.measureText(ch).width, 0) + gap * (chars.length - 1);
+  let cx = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+  ctx.textAlign = 'left';
+  for (const ch of chars) { ctx.fillText(ch, cx, y); cx += ctx.measureText(ch).width + gap; }
+  ctx.textAlign = align;
 }
 
 /** Draw a document onto a canvas exactly as wide as the print head. */
@@ -167,8 +182,56 @@ export function renderDoc(doc: PLine[], paper: 58 | 80): HTMLCanvasElement {
     }
     if (l.t === 'hr') {
       const yy = y + 8;
-      ops.push({ y: yy, draw: (ctx) => { ctx.setLineDash(l.dashed === false ? [] : [6, 5]); ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(width - pad, yy); ctx.stroke(); ctx.setLineDash([]); } });
+      ops.push({ y: yy, draw: (ctx) => {
+        ctx.setLineDash(l.heavy || l.dashed === false ? [] : [6, 5]);
+        ctx.lineWidth = l.heavy ? 4 : 2;
+        ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(width - pad, yy); ctx.stroke();
+        ctx.setLineDash([]); ctx.lineWidth = 2;
+      } });
       y += 18;
+      continue;
+    }
+    if (l.t === 'band') {
+      const size = SIZES.md;
+      const font = `800 ${size}px ${FONT}`;
+      const top = y + 4, h = Math.round(size * 1.7);
+      ops.push({ y: top, draw: (ctx) => {
+        ctx.fillRect(pad, top, width - pad * 2, h);
+        ctx.fillStyle = '#fff'; ctx.font = font; ctx.textAlign = 'center';
+        spaced(ctx, l.text, width / 2, top + Math.round(h / 2 + size * 0.36), 4);
+        ctx.fillStyle = '#000';
+      } });
+      y += h + 10;
+      continue;
+    }
+    if (l.t === 'item') {
+      const size = SIZES.md;
+      const font = `400 ${size}px ${FONT}`;
+      const bold = `700 ${size}px ${FONT}`;
+      const small = `400 ${SIZES.sm}px ${FONT}`;
+      const qtyW = 40;
+      measure.font = bold;
+      const rightW = measure.measureText(l.right).width;
+      measure.font = font;
+      const lines = wrap(measure, l.name, width - pad * 2 - qtyW - rightW - 14);
+      const lh = Math.round(size * 1.3);
+      lines.forEach((line, i) => {
+        const yy = y + size;
+        ops.push({ y: yy, draw: (ctx) => {
+          if (i === 0) { ctx.font = bold; ctx.textAlign = 'left'; ctx.fillText(l.qty, pad, yy); ctx.textAlign = 'right'; ctx.fillText(l.right, width - pad, yy); }
+          ctx.font = font; ctx.textAlign = 'left'; ctx.fillText(line, pad + qtyW, yy);
+        } });
+        y += lh;
+      });
+      if (l.detail) {
+        measure.font = small;
+        for (const line of wrap(measure, l.detail, width - pad * 2 - qtyW)) {
+          const yy = y + SIZES.sm;
+          ops.push({ y: yy, draw: (ctx) => { ctx.font = small; ctx.textAlign = 'left'; ctx.fillText(line, pad + qtyW, yy); } });
+          y += Math.round(SIZES.sm * 1.25);
+        }
+      }
+      y += 4;
       continue;
     }
     const size = SIZES[l.size ?? 'md'];
@@ -179,7 +242,8 @@ export function renderDoc(doc: PLine[], paper: 58 | 80): HTMLCanvasElement {
       for (const line of wrap(measure, l.text, width - pad * 2)) {
         const yy = y + size;
         const align = l.align ?? 'left';
-        ops.push({ y: yy, draw: (ctx) => { ctx.font = font; ctx.textAlign = align; ctx.fillText(line, align === 'center' ? width / 2 : align === 'right' ? width - pad : pad, yy); } });
+        const x = align === 'center' ? width / 2 : align === 'right' ? width - pad : pad;
+        ops.push({ y: yy, draw: (ctx) => { ctx.font = font; ctx.textAlign = align; if (l.spacing) spaced(ctx, line, x, yy, l.spacing); else ctx.fillText(line, x, yy); } });
         y += lh;
       }
     } else {

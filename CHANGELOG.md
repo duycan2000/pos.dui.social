@@ -1,0 +1,28 @@
+# Changelog
+
+Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
+
+## 0.7.0 — 01/11/2026
+- Mẫu bill mới bằng tiếng Anh, gọn và rõ: tên quán, dải tiêu đề BILL / RECEIPT, số đơn, bàn, số khách, giờ, người phục vụ; món theo tên tiếng Anh trong Menu kèm tuỳ chọn; Subtotal / Buy 1 Get 1 / Complimentary chỉ hiện khi có; tổng VND; tiền khách đưa, tiền thối, tip.
+- Xem trước cả "Bill tạm tính" và "Hoá đơn đã trả" trong Máy in.
+- Hiện số phiên bản ở màn đăng nhập và trong menu.
+
+## 0.6.0 — 01/11/2026
+- Sơ đồ bàn (mở bàn, gửi món, in tạm tính, chuyển/gộp bàn, thanh toán), chỉnh sơ đồ trong Quản trị.
+- Chấm công vào/ra ca, bảng công, lịch làm, lương giờ.
+- App Android (Trusted Web Activity) build bằng GitHub Actions.
+
+## 0.5.0 — 31/10/2026
+- Máy in DM01 58mm, in bill cho khách, dữ liệu demo tháng trước + nút xoá demo.
+
+## 0.4.0
+- Giao diện mới "Quầy đêm" v2.
+
+## 0.3.0
+- Ly mời, tab mở, tip, tự xác nhận chuyển khoản (SePay/Casso), cài máy in Bluetooth.
+
+## 0.2.0
+- Chạy trên Cloudflare Workers Free (PIN băm nhẹ, khoá sau 5 lần sai).
+
+## 0.1.0
+- Bản đầu: bán hàng offline, két chung, BOGO, VietQR, kho, công thức, tài chính, báo cáo.

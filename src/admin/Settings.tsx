@@ -57,8 +57,8 @@ export function Settings() {
 
       <div className="section-title">Hoá đơn & màn bán</div>
       <div className="form-grid">
-        <Text label="Dòng đầu hoá đơn" value={f.receipt_header} onChange={(v) => setF({ ...f, receipt_header: v || null })} />
-        <Text label="Dòng cuối hoá đơn" value={f.receipt_footer} onChange={(v) => setF({ ...f, receipt_footer: v || null })} />
+        <Text label="Dòng đầu bill (in dưới tên quán, nên viết tiếng Anh)" value={f.receipt_header} onChange={(v) => setF({ ...f, receipt_header: v || null })} />
+        <Text label="Dòng cuối bill (mặc định: Thank you — see you again soon!)" value={f.receipt_footer} onChange={(v) => setF({ ...f, receipt_footer: v || null })} />
         <Num label="Tự quay về đơn mới sau (giây)" value={st.done_return_seconds ?? 5} onChange={(v) => setSt({ ...st, done_return_seconds: v })} />
         <Num label="Cảnh báo giá vốn khi vượt (%)" value={st.cost_alert_pct ?? 30} onChange={(v) => setSt({ ...st, cost_alert_pct: v })} />
       </div>
