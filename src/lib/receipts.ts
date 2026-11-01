@@ -1,5 +1,7 @@
 // What goes on paper: customer bill, pre-bill for an open tab, and the bar ticket.
 import type { Order, OrderLine, PosConfig } from '../../shared/types';
+import QRCode from 'qrcode';
+import { vietQrPayload } from '../../shared/vietqr';
 import { hhmm, localParts } from '../../shared/util';
 import { type PLine, printDoc, printerSettings } from './printer';
 
@@ -99,6 +101,31 @@ export function receiptDoc(cfg: PosConfig, o: Order): PLine[] {
 /** Guest bill before payment (also for a table that asks for the bill). Not a receipt. */
 export async function preBillDoc(cfg: PosConfig, o: Order): Promise<PLine[]> {
   return [...billHeader(cfg, o, 'BILL'), ...billItems(cfg, o), ...billTotals(o, 'TOTAL'), ...footer(cfg, 'Not paid yet · please pay at the counter')];
+}
+
+/**
+ * Bill with a VietQR code for a guest who pays by bank transfer. The QR carries the amount and the note
+ * "DUI A012", so the transfer is matched to this order and confirmed automatically by the bank webhook.
+ */
+export async function qrBillDoc(cfg: PosConfig, o: Order, amount: number): Promise<PLine[]> {
+  const { vietqr_bank_bin: bin, vietqr_account: acc, vietqr_account_name: holder } = cfg.outlet;
+  if (!bin || !acc) throw new Error('Chưa cài tài khoản VietQR (Quản trị › Cài đặt)');
+  const purpose = 'DUI ' + o.short_code.replace('-', '');
+  const canvas = document.createElement('canvas');
+  await QRCode.toCanvas(canvas, vietQrPayload({ bankBin: bin, account: acc, amount, purpose }), { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+  const tip = amount - o.total;
+  return [
+    ...billHeader(cfg, o, 'BILL'), ...billItems(cfg, o), ...billTotals(o, 'TOTAL'),
+    ...(tip > 0 ? [{ t: 'row', left: 'Tip', right: money(tip), size: 'sm' } as PLine, { t: 'row', left: 'TO PAY', right: `${money(amount)} VND`, size: 'lg', bold: true } as PLine] : []),
+    { t: 'hr' },
+    { t: 'text', text: 'SCAN TO PAY', align: 'center', size: 'md', bold: true, spacing: 2 },
+    { t: 'text', text: 'Any Vietnamese banking app · VietQR', align: 'center', size: 'sm' },
+    { t: 'image', canvas },
+    { t: 'text', text: `${money(amount)} VND`, align: 'center', size: 'lg', bold: true },
+    { t: 'text', text: [holder, acc].filter(Boolean).join(' · '), align: 'center', size: 'sm' },
+    { t: 'text', text: `Transfer note: ${purpose}`, align: 'center', size: 'sm', bold: true },
+    ...footer(cfg, 'Please keep the note unchanged'),
+  ];
 }
 
 // ---------- bar ticket (Vietnamese, for the bartenders) ----------

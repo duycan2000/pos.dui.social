@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.17.0 — 01/11/2026
+- Khách chọn chuyển khoản VietQR: in bill có mã QR (đúng số tiền + nội dung "DUI A012") để khách quét ngay trên giấy; tiền vào là đơn tự xác nhận như QR trên màn hình. Tự in khi chọn chuyển khoản (tắt được trong Máy in), có nút in lại; xem trước "Bill có QR" trong Máy in.
+
 ## 0.16.0 — 01/11/2026
 - Linh vật Pug "Dui": chú pug vẽ bằng SVG, ló lên ở góc dưới màn hình, vẫy chân, ngoáy đuôi, chớp mắt, kèm câu chào hợp với từng màn.
   - Luôn xuất hiện khi: đăng nhập (chào theo buổi), thanh toán xong (đội mũ tiệc), chấm công vào/ra.

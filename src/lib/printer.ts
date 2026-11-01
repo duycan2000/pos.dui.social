@@ -13,6 +13,7 @@ export interface PrinterSettings {
   mode: 'none' | 'ble' | 'rawbt';
   paper: 58 | 80;
   autoReceipt: boolean;   // print the bill after each payment
+  autoQrBill?: boolean;   // print the bill with its VietQR code when the guest pays by transfer (default on)
   autoTicket: boolean;    // print a bar ticket when an order or a tab round is sent
   openDrawer: boolean;    // kick the cash drawer on cash payments (printer must have an RJ11 port)
   copies: number;

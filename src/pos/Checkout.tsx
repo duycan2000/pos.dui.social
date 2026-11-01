@@ -8,7 +8,7 @@ import { vnd, vndShort } from '../../shared/util';
 import { vietQrPayload } from '../../shared/vietqr';
 import { api } from '../lib/api';
 import { kickDrawer, printerSettings } from '../lib/printer';
-import { preBillDoc, tryPrint } from '../lib/receipts';
+import { preBillDoc, qrBillDoc, tryPrint } from '../lib/receipts';
 import { cartAsOrder, cartTotals, finalizeCart, makePayment, navigate, optionLabel, peekShortCode, setState, toast, useStore } from '../lib/store';
 import { runSync } from '../lib/sync';
 import { Icon, Keypad, MoneyInput, Sheet, TopBar } from '../ui';
@@ -170,6 +170,23 @@ function QrPay({ due, tip, code, onReceived, onWait, busy }: { due: number; tip:
   const online = useStore((s) => s.net.online);
   const auto = !!cfg.features?.bankWebhook && online;
   const done = useRef(false);
+  const [printing, setPrinting] = useState(false);
+  const printQr = async (silent = false) => {
+    setPrinting(true);
+    try {
+      const err = await tryPrint(await qrBillDoc(cfg, await cartAsOrder(), due + tip));
+      if (err && !silent) toast(err, true);
+      if (!err) toast('Đã in bill có mã QR — khách quét trên giấy được');
+    } catch (e) { if (!silent) toast((e as Error).message, true); } finally { setPrinting(false); }
+  };
+  // Choosing transfer prints the bill with its QR straight away (when a printer is set up).
+  const printed = useRef(false);
+  useEffect(() => {
+    const p = printerSettings();
+    if (!code || printed.current || p.mode === 'none' || p.autoQrBill === false || !cfg.outlet.vietqr_account) return;
+    printed.current = true;
+    printQr(true);
+  }, [code]); // eslint-disable-line
   useEffect(() => {
     if (!auto || !code) return;
     const timer = setInterval(async () => {
@@ -192,6 +209,7 @@ function QrPay({ due, tip, code, onReceived, onWait, busy }: { due: number; tip:
         <div className="value">{vnd(due + tip)}</div>
       </div>
       <QrImage amount={due + tip} code={code} />
+      <button className="btn outline" disabled={printing} onClick={() => printQr()}><Icon name="printer" size={20} />{printing ? 'Đang in…' : 'In bill có mã QR cho khách'}</button>
       {auto
         ? <div className="banner info" style={{ alignItems: 'center' }}><span className="spinner" /> Đang chờ tiền vào tài khoản — tự xác nhận khi ngân hàng báo.</div>
         : <p className="small muted" style={{ textAlign: 'center', margin: 0 }}>Kiểm tra app ngân hàng: đúng số tiền và nội dung thì bấm “Đã nhận tiền”.</p>}

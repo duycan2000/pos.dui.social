@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
 import { bleSupported, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, renderDoc, savePrinter } from '../lib/printer';
-import { preBillDoc, receiptDoc } from '../lib/receipts';
+import { preBillDoc, qrBillDoc, receiptDoc } from '../lib/receipts';
 import { navigate, toast, useStore } from '../lib/store';
 import { Icon, Segmented, Sheet, TopBar } from '../ui';
 
@@ -10,7 +10,7 @@ export default function PrinterSettings() {
   const cfg = useStore((s) => s.config)!;
   const [p, setP] = useState<P>(DEFAULT_PRINTER);
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<{ kind: 'bill' | 'receipt'; url: string } | null>(null);
+  const [preview, setPreview] = useState<{ kind: 'bill' | 'receipt' | 'qr'; url: string } | null>(null);
   useEffect(() => { loadPrinter().then(setP); }, []);
   const update = async (patch: Partial<P>) => { const next = { ...p, ...patch }; setP(next); await savePrinter(next); };
   const pair = async () => {
@@ -34,7 +34,7 @@ export default function PrinterSettings() {
       toast('Đã gửi bản in thử');
     } catch (e) { toast((e as Error).message, true); } finally { setBusy(false); }
   };
-  const showPreview = async (kind: 'bill' | 'receipt') => {
+  const showPreview = async (kind: 'bill' | 'receipt' | 'qr') => {
     // A realistic sample from this menu: two drinks of the first items (English names on paper).
     const [i1, i2] = cfg.items.filter((i) => i.active);
     const mk = (id: string, it: typeof i1 | undefined, qty: number, sort: number, note: string | null = null) => ({
@@ -47,12 +47,14 @@ export default function PrinterSettings() {
     const now = Date.now();
     const sample = {
       id: 'x', outlet_id: '', device_id: '', short_code: `${cfg.device.order_prefix}-012`, business_day: new Date().toISOString().slice(0, 10), staff_id: cfg.staff[0]?.id ?? '',
-      staff_shift_id: null, drawer_session_id: null, order_type: 'dine_in', customer_label: null, status: kind === 'bill' ? 'open' : 'paid', subtotal, promo_total: promo, discount_total: 0, comp_total: 0, total,
-      table_id: cfg.tables?.[0]?.id ?? null, guests: 3, sent_at: null, paid_at: kind === 'bill' ? null : now, void_reason: null, voided_by: null, approved_by: null, voided_at: null, created_at: now - 3600000, updated_at: now,
+      staff_shift_id: null, drawer_session_id: null, order_type: 'dine_in', customer_label: null, status: kind === 'receipt' ? 'paid' : 'open', subtotal, promo_total: promo, discount_total: 0, comp_total: 0, total,
+      table_id: cfg.tables?.[0]?.id ?? null, guests: 3, sent_at: null, paid_at: kind === 'receipt' ? now : null, void_reason: null, voided_by: null, approved_by: null, voided_at: null, created_at: now - 3600000, updated_at: now,
       adjustments: [], lines,
-      payments: kind === 'bill' ? [] : [{ id: 'p', method: 'cash', amount: total, tip: 20000, tendered: Math.ceil((total + 20000) / 100000) * 100000, change_given: Math.ceil((total + 20000) / 100000) * 100000 - total - 20000, reference: null, status: 'confirmed', confirmed_by: null, confirmed_at: now, drawer_session_id: null, created_at: now }],
+      payments: kind !== 'receipt' ? [] : [{ id: 'p', method: 'cash', amount: total, tip: 20000, tendered: Math.ceil((total + 20000) / 100000) * 100000, change_given: Math.ceil((total + 20000) / 100000) * 100000 - total - 20000, reference: null, status: 'confirmed', confirmed_by: null, confirmed_at: now, drawer_session_id: null, created_at: now }],
     } as Order;
-    const doc = kind === 'bill' ? await preBillDoc(cfg, sample) : receiptDoc(cfg, sample);
+    let doc;
+    try { doc = kind === 'bill' ? await preBillDoc(cfg, sample) : kind === 'qr' ? await qrBillDoc(cfg, sample, total) : receiptDoc(cfg, sample); }
+    catch (e) { toast((e as Error).message, true); return; }
     setPreview({ kind, url: renderDoc(doc, p.paper).toDataURL() });
   };
   return (
@@ -90,6 +92,7 @@ export default function PrinterSettings() {
             <div className="section-title">Tự động</div>
             <div className="list">
               <label className="li check"><input type="checkbox" checked={p.autoReceipt} onChange={(e) => update({ autoReceipt: e.target.checked })} /><span className="grow">In hoá đơn sau mỗi lần thanh toán</span></label>
+              <label className="li check"><input type="checkbox" checked={p.autoQrBill !== false} onChange={(e) => update({ autoQrBill: e.target.checked })} /><span className="grow">In bill có mã QR khi khách chọn chuyển khoản</span></label>
               <label className="li check"><input type="checkbox" checked={p.autoTicket} onChange={(e) => update({ autoTicket: e.target.checked })} /><span className="grow">In phiếu pha chế khi gửi đơn hoặc lượt tab mới</span></label>
               <label className="li check"><input type="checkbox" checked={p.slow !== false} onChange={(e) => update({ slow: e.target.checked })} /><span className="grow">Máy in mini cầm tay — gửi chậm cho ổn định <span className="small faint">(nên bật với DM01)</span></span></label>
               <label className="li check"><input type="checkbox" checked={p.openDrawer} onChange={(e) => update({ openDrawer: e.target.checked })} /><span className="grow">Mở két tiền khi thu tiền mặt <span className="small faint">(két cắm vào máy in)</span></span></label>
@@ -107,7 +110,7 @@ export default function PrinterSettings() {
         <Sheet onClose={() => setPreview(null)}>
           <h2>Bill mẫu khổ {p.paper}mm</h2>
           <p className="small muted" style={{ marginTop: 4 }}>Đúng như máy in sẽ in ra. Bill cho khách bằng tiếng Anh, tên món lấy theo tên tiếng Anh trong Menu.</p>
-          <Segmented value={preview.kind} onChange={(v) => showPreview(v)} options={[['bill', 'Bill tạm tính'], ['receipt', 'Hoá đơn đã trả']]} />
+          <Segmented value={preview.kind} onChange={(v) => showPreview(v)} options={[['bill', 'Bill tạm tính'], ['qr', 'Bill có QR'], ['receipt', 'Hoá đơn đã trả']]} />
           <div className="mt16" style={{ background: '#fff', padding: 12, borderRadius: 12, display: 'flex', justifyContent: 'center' }}><img src={preview.url} alt="Bill mẫu" style={{ width: '100%', maxWidth: 320, imageRendering: 'pixelated' }} /></div>
         </Sheet>
       )}
