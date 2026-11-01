@@ -27,9 +27,9 @@ jobs:
       APP_URL: ${{ github.event.inputs.app_url || vars.APP_URL || 'https://pos.dui.social' }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
