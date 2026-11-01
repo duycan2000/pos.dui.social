@@ -34,7 +34,9 @@ export default function OrderScreen() {
   const totals = cartTotals(cart.lines);
   const count = cartCount(cart.lines);
   const pendingQr = orders.filter((o) => o.status === 'awaiting_payment').length;
-  const openTabs = orders.filter((o) => o.status === 'open').length;
+  const openTabs = orders.filter((o) => o.status === 'open' && !o.table_id).length;
+  const busyTables = new Set(orders.filter((o) => o.table_id && (o.status === 'open' || o.status === 'awaiting_payment')).map((o) => o.table_id)).size;
+  const hasTables = !!cfg.tables?.length;
   const noDrawer = !drawer || !shift || shift.drawer_session_id !== drawer.id;
 
   const needsChoice = (it: Item) => {
@@ -60,6 +62,11 @@ export default function OrderScreen() {
               <span className="ellipsis">{!net.online ? `Offline · ${net.pending} chờ gửi` : net.pending ? `Đang gửi ${net.pending}` : 'Đã đồng bộ'} · {staff.name}</span>
             </button>
           </div>
+          {hasTables && (
+            <button className="pill" onClick={() => navigate('tables')} aria-label={`Sơ đồ bàn: ${busyTables} bàn có khách`}>
+              <Icon name="table" size={18} /><span className="phone-hide">Bàn</span>{busyTables > 0 && <span className="count">{busyTables}</span>}
+            </button>
+          )}
           <button className="pill" onClick={() => navigate('tabs')} aria-label={`Tab đang mở: ${openTabs}`}>
             <Icon name="tab" size={18} /><span className="phone-hide">Tab</span>{openTabs > 0 && <span className="count">{openTabs}</span>}
           </button>
@@ -106,8 +113,8 @@ export default function OrderScreen() {
         </div>
 
         <div className="ticketbar phone-only">
-          <button className="summary" disabled={!count && !cart.tabCode} onClick={() => navigate('cart')}>
-            <span className="row" style={{ gap: 0 }}><span className="n">{count}</span>{cart.tabCode ? `Tab ${cart.customer_label}` : 'Xem đơn'}</span>
+          <button className="summary" disabled={!count && !cart.tabCode && !cart.table_id} onClick={() => navigate('cart')}>
+            <span className="row" style={{ gap: 0 }}><span className="n">{count}</span>{cart.table_id ? (cfg.tables?.find((t) => t.id === cart.table_id)?.name ?? 'Bàn') : cart.tabCode ? `Tab ${cart.customer_label}` : 'Xem đơn'}</span>
             <span className="mono">{vnd(totals.total)}</span>
           </button>
         </div>
@@ -217,9 +224,11 @@ function MenuDrawer({ onClose, manager, pendingQr, openTabs }: { onClose: () => 
           </div>
         </div>
         <button className="navitem" onClick={() => go('order')}><Icon name="home" />Bán hàng</button>
+        <button className="navitem" onClick={() => go('tables')}><Icon name="table" />Sơ đồ bàn</button>
         <button className="navitem" onClick={() => go('tabs')}><Icon name="tab" />Tab đang mở{openTabs ? <span className="badge end">{openTabs}</span> : null}</button>
         <button className="navitem" onClick={() => go('orders')}><Icon name="list" />Đơn hôm nay{pendingQr ? <span className="badge info end">{pendingQr} chờ CK</span> : null}</button>
         <button className="navitem" onClick={() => go('cashmove')}><Icon name="wallet" />Thu / chi két</button>
+        <button className="navitem" onClick={() => go('clock')}><Icon name="clock" />Chấm công · lịch làm</button>
         <button className="navitem" onClick={() => go('printer')}><Icon name="printer" />Máy in</button>
         <button className="navitem" onClick={() => go('sync')}><Icon name="sync" />Đồng bộ</button>
         <button className="navitem" onClick={() => go('close')}><Icon name="door" />Kết ca / Đóng két</button>

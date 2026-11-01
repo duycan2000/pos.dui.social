@@ -133,7 +133,7 @@ export async function staffLogin(c: Ctx) {
 
 /** Everything a selling device needs to work offline. Staff rows include PIN hashes for offline login. */
 export async function configSnapshot(env: Env, device: Ctx['device']): Promise<PosConfig> {
-  const [outlet, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems] = await Promise.all([
+  const [outlet, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems, tables] = await Promise.all([
     first(env, 'SELECT * FROM outlet LIMIT 1'),
     all(env, 'SELECT id,name,role,active,pin_salt,pin_hash,max_discount_pct,cash_out_limit FROM staff WHERE active=1 ORDER BY role, name'),
     all(env, 'SELECT id,name_en,name_vi,sort,active FROM category ORDER BY sort'),
@@ -143,6 +143,7 @@ export async function configSnapshot(env: Env, device: Ctx['device']): Promise<P
     all(env, 'SELECT item_id,group_id,sort FROM item_modifier_group ORDER BY sort'),
     all(env, 'SELECT * FROM promotion'),
     all(env, 'SELECT promotion_id,item_id FROM promotion_item'),
+    all(env, 'SELECT id,area,name,seats,x,y,w,h,shape,sort FROM dining_table WHERE active=1 ORDER BY area, sort, name'),
   ]);
-  return { outlet, device: device!, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems, features: { bankWebhook: !!env.BANK_WEBHOOK_KEY } } as PosConfig;
+  return { outlet, device: device!, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems, tables, features: { bankWebhook: !!env.BANK_WEBHOOK_KEY } } as PosConfig;
 }

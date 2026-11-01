@@ -5,10 +5,11 @@ import type { OrderLine } from '../../shared/types';
 import { vnd } from '../../shared/util';
 import { preBillDoc, tryPrint } from '../lib/receipts';
 import {
-  cartAsOrder, cartCount, cartTotals, clearCart, compLine, getState, navigate, optionLabel, peekShortCode, removeLine, requestApproval, saveToTab,
-  setCartMeta, staffName, toast, updateLine, useStore, voidOrder,
+  cartAsOrder, cartCount, cartTotals, clearCart, compLine, getState, markPrebill, navigate, optionLabel, peekShortCode, removeLine, requestApproval, saveToTab,
+  setCartMeta, staffName, tableById, toast, updateLine, useStore, voidOrder,
 } from '../lib/store';
 import { Confirm, Icon, Segmented, Sheet } from '../ui';
+import { TablePicker } from './Tables';
 
 const TYPES: [string, string][] = [['takeaway', 'Mang đi'], ['dine_in', 'Tại chỗ'], ['message', 'Tin nhắn']];
 
@@ -20,6 +21,9 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
   const [edit, setEdit] = useState<OrderLine | null>(null);
   const [askClear, setAskClear] = useState(false);
   const [askName, setAskName] = useState(false);
+  const [pickTable, setPickTable] = useState(false);
+  const table = tableById(cart.table_id);
+  const hasTables = !!cfg.tables?.length;
   useEffect(() => { peekShortCode().then(setCode); }, [cart.id, cart.tabCode, orders.length]);
   const t = cartTotals(cart.lines);
   const count = cartCount(cart.lines);
@@ -28,10 +32,18 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
   const visible = cart.lines.filter((l) => l.status === 'active' || l.sent_at);
 
   const doSaveTab = async () => {
-    if (!getState().cart.customer_label.trim()) { setAskName(true); return; }
+    const c = getState().cart;
+    if (!c.table_id && !c.customer_label.trim()) { setAskName(true); return; }
     const o = await saveToTab();
-    toast(`Đã lưu tab ${o.customer_label} · #${o.short_code}`);
-    onBack?.();
+    const tn = tableById(o.table_id)?.name;
+    toast(tn ? `Đã gửi món ${tn} · chưa thanh toán` : `Đã lưu tab ${o.customer_label} · #${o.short_code}`);
+    // Waiters go back to the floor after sending a table's round.
+    if (tn) navigate('tables'); else onBack?.();
+  };
+  const setType = async (v: typeof cart.order_type) => {
+    if (v === 'dine_in' && hasTables && !cart.table_id) { await setCartMeta({ order_type: v }); setPickTable(true); return; }
+    if (v !== 'dine_in' && cart.table_id && !isTab) await setCartMeta({ table_id: null, guests: null });
+    await setCartMeta({ order_type: v });
   };
   const cancelTab = async () => {
     const r = await requestApproval({ title: `Huỷ cả tab #${cart.tabCode}`, reasonRequired: true, reasons: ['Khách về không gọi', 'Mở nhầm', 'Gộp sang tab khác'] });
@@ -39,7 +51,8 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
   };
   const preBill = async () => {
     const err = await tryPrint(await preBillDoc(cfg, await cartAsOrder()));
-    toast(err ?? 'Đã in bill cho khách', !!err);
+    if (!err && isTab && !newCount) await markPrebill(cart.id);
+    toast(err ?? (table ? `Đã in tạm tính ${table.name} — chưa thanh toán` : 'Đã in bill cho khách'), !!err);
   };
 
   return (
@@ -48,16 +61,26 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
         <div className="row">
           {onBack && <button className="iconbtn" aria-label="Quay lại" onClick={onBack}><Icon name="back" /></button>}
           <div className="grow col" style={{ gap: 0 }}>
-            <span className="big ellipsis">{isTab ? `Tab ${cart.customer_label || ''}` : 'Đơn mới'}</span>
-            <span className="small muted">#{code}{isTab ? ' · đang mở' : ''}</span>
+            <span className="big ellipsis">{table ? table.name : isTab ? `Tab ${cart.customer_label || ''}` : 'Đơn mới'}</span>
+            <span className="small muted">#{code}{cart.guests ? ` · ${cart.guests} khách` : ''}{isTab ? ' · đang mở, chưa thanh toán' : ''}</span>
           </div>
+          {hasTables && <button className="iconbtn" aria-label={table ? 'Đổi bàn' : 'Chọn bàn'} onClick={() => setPickTable(true)}><Icon name="table" /></button>}
           <button className="iconbtn" aria-label="In bill cho khách" disabled={!count} onClick={preBill}><Icon name="printer" /></button>
           {isTab
             ? <button className="iconbtn" aria-label="Huỷ tab" onClick={cancelTab}><Icon name="trash" /></button>
             : <button className="iconbtn" aria-label="Xoá đơn" disabled={!count} onClick={() => setAskClear(true)}><Icon name="trash" /></button>}
         </div>
-        <input className="input" value={cart.customer_label} onChange={(e) => setCartMeta({ customer_label: e.target.value })} placeholder="Tên khách / số gọi" aria-label="Tên khách / số gọi" />
-        <Segmented value={cart.order_type} options={TYPES as [typeof cart.order_type, string][]} onChange={(v) => setCartMeta({ order_type: v })} />
+        <input className="input" value={cart.customer_label} onChange={(e) => setCartMeta({ customer_label: e.target.value })} placeholder={table ? 'Tên khách (không bắt buộc)' : 'Tên khách / số gọi'} aria-label="Tên khách / số gọi" />
+        {table ? (
+          <div className="row between small">
+            <span className="muted">Tại chỗ · {table.area}</span>
+            <div className="stepper sm">
+              <button aria-label="Bớt khách" onClick={() => setCartMeta({ guests: Math.max(1, (cart.guests || 1) - 1) })}><Icon name="minus" size={18} /></button>
+              <span className="mono">{cart.guests || '–'} khách</span>
+              <button aria-label="Thêm khách" onClick={() => setCartMeta({ guests: (cart.guests || 0) + 1 })}><Icon name="plus" size={18} /></button>
+            </div>
+          </div>
+        ) : <Segmented value={cart.order_type} options={TYPES as [typeof cart.order_type, string][]} onChange={setType} />}
       </div>
 
       <div className="ticket-lines">
@@ -81,14 +104,23 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
           {t.comp_total > 0 && <div className="kv small"><span style={{ color: 'var(--violet)' }}>Mời</span><span className="mono" style={{ color: 'var(--violet)' }}>−{vnd(t.comp_total)}</span></div>}
           <div className="kv total"><span>Tổng</span><span className="mono">{vnd(t.total)}</span></div>
         </div>
-        <div className="row">
-          <button className="btn lg" style={{ flex: '0 0 auto' }} disabled={!newCount && !(!isTab && count)} onClick={doSaveTab}>
-            <Icon name="tab" size={20} />{isTab ? 'Gửi lượt' : 'Lưu tab'}
-          </button>
-          <button className="btn primary lg grow" disabled={!count} onClick={() => navigate('checkout')}>Thanh toán</button>
-        </div>
+        {table ? (
+          // Table: send rounds to the bar; payment comes later when the guests ask for the bill.
+          <div className="row">
+            <button className="btn primary lg grow" disabled={!newCount} onClick={doSaveTab}><Icon name="tab" size={20} />Gửi món{newCount ? ` (${newCount})` : ''}</button>
+            <button className={'btn lg' + (newCount ? '' : ' primary')} style={{ flex: newCount ? '0 0 auto' : 1 }} disabled={!count} onClick={() => navigate('checkout')}>Thanh toán</button>
+          </div>
+        ) : (
+          <div className="row">
+            <button className="btn lg" style={{ flex: '0 0 auto' }} disabled={!newCount && !(!isTab && count)} onClick={doSaveTab}>
+              <Icon name="tab" size={20} />{isTab ? 'Gửi lượt' : 'Lưu tab'}
+            </button>
+            <button className="btn primary lg grow" disabled={!count} onClick={() => navigate('checkout')}>Thanh toán</button>
+          </div>
+        )}
       </div>
 
+      {pickTable && <TablePicker mode="assign" from={table} onClose={() => setPickTable(false)} />}
       {edit && <LineSheet line={cart.lines.find((x) => x.id === edit.id) ?? edit} onClose={() => setEdit(null)} />}
       {askClear && <Confirm title="Xoá toàn bộ đơn?" text="Các món chưa lưu sẽ bị xoá." okText="Xoá đơn" danger onCancel={() => setAskClear(false)} onOk={() => { setAskClear(false); clearCart(); }} />}
       {askName && <NameSheet onClose={() => setAskName(false)} onDone={async (name) => { await setCartMeta({ customer_label: name, order_type: cart.order_type === 'takeaway' ? 'dine_in' : cart.order_type }); setAskName(false); setTimeout(doSaveTab, 0); }} />}

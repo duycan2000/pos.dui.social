@@ -7,7 +7,7 @@ import { get, post, put } from '../lib/api';
 import { Sheet } from '../ui';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
 
-interface S { id?: string; name: string; role: Role; active: number; max_discount_pct: number; cash_out_limit: number; pin?: string }
+interface S { id?: string; name: string; role: Role; active: number; max_discount_pct: number; cash_out_limit: number; hourly_rate?: number; pin?: string }
 const ROLE: Record<Role, string> = { owner: 'Chủ quán', manager: 'Quản lý', staff: 'Nhân viên' };
 
 export default function Staff() {
@@ -16,17 +16,17 @@ export default function Staff() {
   const save = async () => {
     if (!e?.name.trim()) return;
     if (e.pin && !validPin(e.pin, e.role)) return;
-    const body = { name: e.name, role: e.role, active: e.active, max_discount_pct: e.max_discount_pct, cash_out_limit: e.cash_out_limit, pin: e.pin || undefined };
+    const body = { name: e.name, role: e.role, active: e.active, max_discount_pct: e.max_discount_pct, cash_out_limit: e.cash_out_limit, hourly_rate: Math.round(e.hourly_rate || 0), pin: e.pin || undefined };
     const ok = await run(() => (e.id ? put(`/api/admin/staff/${e.id}`, body) : post('/api/admin/staff', body)), 'Đã lưu nhân viên');
     if (ok) { setE(null); list.reload(); }
   };
   return (
-    <Page title="Nhân viên" right={<button className="btn sm primary" onClick={() => setE({ name: '', role: 'staff', active: 1, max_discount_pct: 0, cash_out_limit: 100000, pin: '' })}>+ Nhân viên</button>}>
+    <Page title="Nhân viên" right={<button className="btn sm primary" onClick={() => setE({ name: '', role: 'staff', active: 1, max_discount_pct: 0, cash_out_limit: 100000, hourly_rate: 0, pin: '' })}>+ Nhân viên</button>}>
       <Loading error={list.error} loading={list.loading && !list.data} />
       <div className="list">
         {(list.data ?? []).map((s) => (
           <button key={s.id} className="li" style={{ opacity: s.active ? 1 : 0.5 }} onClick={() => setE({ ...s, pin: '' })}>
-            <span className="grow col" style={{ gap: 2 }}><b>{s.name}</b><span className="small muted">{ROLE[s.role]} · chi két tối đa {vnd(s.cash_out_limit)}{s.active ? '' : ' · đã khoá'}</span></span>
+            <span className="grow col" style={{ gap: 2 }}><b>{s.name}</b><span className="small muted">{ROLE[s.role]}{s.hourly_rate ? ` · ${vnd(s.hourly_rate)}/giờ` : ''} · chi két tối đa {vnd(s.cash_out_limit)}{s.active ? '' : ' · đã khoá'}</span></span>
           </button>
         ))}
       </div>
@@ -38,6 +38,7 @@ export default function Staff() {
             <Text label="Tên" value={e.name} onChange={(v) => setE({ ...e, name: v })} />
             <Select label="Vai trò" value={e.role} onChange={(v) => setE({ ...e, role: v as Role })} options={[['staff', 'Nhân viên'], ['manager', 'Quản lý'], ['owner', 'Chủ quán']]} />
             <Text label={(e.id ? 'PIN mới (để trống nếu giữ nguyên) · ' : '') + pinRule(e.role)} type="password" inputMode="numeric" value={e.pin} onChange={(v) => setE({ ...e, pin: v.replace(/\D/g, '').slice(0, 6) })} />
+            <Num label="Lương giờ (₫/giờ, chỉ chủ quán thấy)" value={e.hourly_rate ?? 0} onChange={(v) => setE({ ...e, hourly_rate: Math.round(v) })} />
             <Num label="Hạn mức chi két không cần duyệt (₫)" value={e.cash_out_limit} onChange={(v) => setE({ ...e, cash_out_limit: Math.round(v) })} />
             <Num label="Giảm giá tối đa % (dùng ở P2)" value={e.max_discount_pct} onChange={(v) => setE({ ...e, max_discount_pct: Math.round(v) })} />
             {e.id && <Toggle label="Đang làm" checked={!!e.active} onChange={(v) => setE({ ...e, active: v ? 1 : 0 })} />}

@@ -43,6 +43,12 @@ const paths: Record<string, ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   phone: <><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></>,
   bluetooth: <path d="M7 7l10 10-5 4V3l5 4L7 17" />,
+  table: <><rect x="3" y="4" width="7" height="7" rx="1.5" /><rect x="14" y="4" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><circle cx="17.5" cy="17.5" r="3.5" /></>,
+  move: <><path d="M5 12h14M15 8l4 4-4 4" /><path d="M9 4H5v16h4" /></>,
+  merge: <><path d="M6 4v5a5 5 0 0 0 5 5h7" /><path d="M6 20v-2a4 4 0 0 1 4-4" /><path d="M15 11l3 3-3 3" /></>,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
+  grid: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16M12 4v16" /></>,
 };
 
 export function Icon({ name, size = 22 }: { name: string; size?: number }) {

@@ -143,8 +143,8 @@ export async function revenueReport(c: Ctx) {
     all<{ day: string; method: string; s: number }>(c.env,
       "SELECT o.business_day day, p.method, SUM(p.amount) s FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.status='paid' AND p.status='confirmed' AND o.business_day BETWEEN ? AND ? GROUP BY o.business_day, p.method", from, to),
     all<{ day: string; n: number; v: number }>(c.env,
-      "SELECT business_day day, COUNT(*) n, SUM(total) v FROM sale_order WHERE status='void' AND business_day BETWEEN ? AND ? GROUP BY business_day", from, to),
-    all(c.env, "SELECT o.business_day, o.short_code, o.total, o.void_reason, o.voided_at, s.name voided_by_name, a.name approved_by_name FROM sale_order o LEFT JOIN staff s ON s.id=o.voided_by LEFT JOIN staff a ON a.id=o.approved_by WHERE o.status='void' AND o.business_day BETWEEN ? AND ? ORDER BY o.voided_at", from, to),
+      "SELECT business_day day, COUNT(*) n, SUM(total) v FROM sale_order WHERE status='void' AND merged_into IS NULL AND business_day BETWEEN ? AND ? GROUP BY business_day", from, to),
+    all(c.env, "SELECT o.business_day, o.short_code, o.total, o.void_reason, o.voided_at, s.name voided_by_name, a.name approved_by_name FROM sale_order o LEFT JOIN staff s ON s.id=o.voided_by LEFT JOIN staff a ON a.id=o.approved_by WHERE o.status='void' AND o.merged_into IS NULL AND o.business_day BETWEEN ? AND ? ORDER BY o.voided_at", from, to),
   ]);
   const rows = days.map((d) => {
     const m = (k: string) => pays.find((p) => p.day === d.day && p.method === k)?.s || 0;

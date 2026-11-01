@@ -1,7 +1,7 @@
 // S07 — open tabs, shared between devices. Tap a tab to add a round or take payment.
 import { useState } from 'react';
 import { vnd } from '../../shared/util';
-import { cartCount, cartTotals, clearCart, getState, navigate, openTab, setCartMeta, staffName, toast, useStore } from '../lib/store';
+import { cartCount, cartTotals, clearCart, getState, navigate, openTab, setCartMeta, staffName, toast, useStore, orderTitle } from '../lib/store';
 import { runSync } from '../lib/sync';
 import { Confirm, Empty, Icon, Sheet, TopBar } from '../ui';
 
@@ -18,7 +18,7 @@ export default function Tabs() {
   const [q, setQ] = useState('');
   const [newTab, setNewTab] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const tabs = orders.filter((o) => o.status === 'open' && (!q || (o.customer_label || '').toLowerCase().includes(q.toLowerCase()) || o.short_code.includes(q.toUpperCase())))
+  const tabs = orders.filter((o) => o.status === 'open' && (!q || orderTitle(o).toLowerCase().includes(q.toLowerCase()) || o.short_code.includes(q.toUpperCase())))
     .sort((a, b) => a.created_at - b.created_at);
   const cartBusy = cartCount(cart.lines) > 0 && !cart.tabCode;
 
@@ -41,7 +41,7 @@ export default function Tabs() {
             const n = t.lines.filter((l) => l.status === 'active').reduce((s, l) => s + l.qty, 0);
             return (
               <button key={t.id} className="tabcard" onClick={() => open(t.id)}>
-                <div className="row between"><span className="nm ellipsis">{t.customer_label || 'Không tên'}</span><span className="badge muted">#{t.short_code}</span></div>
+                <div className="row between"><span className="nm ellipsis">{orderTitle(t) || 'Không tên'}</span><span className="badge muted">#{t.short_code}</span></div>
                 <span className="small muted"><Icon name="clock" size={14} /> {since(t.created_at)} · {n} món · {staffName(t.staff_id)}</span>
                 <span className="big mono" style={{ marginTop: 'auto' }}>{vnd(total)}</span>
               </button>

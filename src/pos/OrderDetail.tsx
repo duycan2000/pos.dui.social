@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { hhmm, vnd } from '../../shared/util';
 import { receiptDoc, tryPrint } from '../lib/receipts';
-import { confirmTransfer, navigate, openTab, optionLabel, requestApproval, staffName, toast, useStore, voidOrder } from '../lib/store';
+import { confirmTransfer, navigate, openTab, optionLabel, requestApproval, staffName, toast, useStore, voidOrder, orderTitle } from '../lib/store';
 import { Icon, TopBar } from '../ui';
 import { QrImage } from './Checkout';
 import { methodLabel } from './Orders';
@@ -22,7 +22,7 @@ export default function OrderDetail({ id }: { id: string }) {
   const print = async () => { const err = await tryPrint(receiptDoc(cfg, o)); toast(err ?? 'Đã gửi lệnh in', !!err); };
   return (
     <div className="screen">
-      <TopBar title={`#${o.short_code}${o.customer_label ? ' · ' + o.customer_label : ''}`} sub={STATUS[o.status]} onBack={() => navigate('orders')}
+      <TopBar title={`#${o.short_code}${orderTitle(o) ? ' · ' + orderTitle(o) : ''}`} sub={STATUS[o.status]} onBack={() => navigate('orders')}
         right={o.status === 'paid' ? <button className="iconbtn" aria-label="In lại hoá đơn" onClick={print}><Icon name="printer" /></button> : undefined} />
       <div className="scroll pad col gap12">
         <div className="card col" style={{ gap: 0 }}>

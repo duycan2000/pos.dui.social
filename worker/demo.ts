@@ -181,8 +181,8 @@ async function seedMenu(c: Ctx, o: { id: string; tz_offset_min: number; business
   });
 
   // Demo staff (PIN Linh 111111, Nam 2222).
-  stmts.push(stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,1,20,500000,?,?)', did('ST'), o.id, 'Linh (demo)', 'demo1', await hashPin('111111', 'demo1'), 'manager', t, t));
-  stmts.push(stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,1,0,100000,?,?)', did('ST'), o.id, 'Nam (demo)', 'demo2', await hashPin('2222', 'demo2'), 'staff', t, t));
+  stmts.push(stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,hourly_rate,created_at,updated_at) VALUES (?,?,?,?,?,?,1,20,500000,35000,?,?)', did('ST'), o.id, 'Linh (demo)', 'demo1', await hashPin('111111', 'demo1'), 'manager', t, t));
+  stmts.push(stmt(env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,hourly_rate,created_at,updated_at) VALUES (?,?,?,?,?,?,1,0,100000,25000,?,?)', did('ST'), o.id, 'Nam (demo)', 'demo2', await hashPin('2222', 'demo2'), 'staff', t, t));
 
   // Monthly running costs.
   const costs: [string, number, string, string][] = [['rent', 15000000, 'bank', 'Tiền thuê mặt bằng'], ['salary', 7000000, 'bank', 'Lương Linh'], ['salary', 6000000, 'bank', 'Lương Nam'], ['utilities', 2600000, 'bank', 'Điện nước'], ['utilities', 300000, 'bank', 'Internet'], ['marketing', 1500000, 'owner', 'Quảng cáo Facebook']];
@@ -307,6 +307,16 @@ async function seedDay(c: Ctx, o: { id: string; tz_offset_min: number; business_
   workers.forEach((w) => stmts.push(stmt(env, 'INSERT INTO staff_shift (id,staff_id,outlet_id,device_id,drawer_session_id,business_day,started_at,ended_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
     did('SH'), w.id, o.id, c.device!.id, drawerId, day, openAt, closeAt, openAt, closeAt)));
 
+  // Time clock and planned shifts for the demo staff: 17:00–01:30, sometimes a little late.
+  for (const w of workers.filter((x) => x.id.startsWith('DEMO'))) {
+    stmts.push(stmt(env, 'INSERT INTO work_schedule (id,staff_id,day,start,end,note,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', did('WS'), w.id, day, '17:00', '01:30', null, openAt, openAt));
+    const late = r() < 0.15 ? 15 + Math.floor(r() * 20) : -Math.floor(r() * 10);
+    const inAt = at(day, 17, 0, tz) + late * 60000;
+    const outAt = closeAt + Math.floor(r() * 25) * 60000;
+    stmts.push(stmt(env, 'INSERT INTO time_entry (id,staff_id,business_day,clock_in,clock_out,break_min,device_id,source,note,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      did('TE'), w.id, day, inAt, outAt, 30, c.device!.id, 'pos', null, inAt, outAt));
+  }
+
   await batch(env, stmts);
   return json({ ok: true, orders: n });
 }
@@ -323,6 +333,8 @@ export async function clear(c: Ctx) {
     stmt(env, `DELETE FROM sale_order WHERE id ${L}`),
     stmt(env, `DELETE FROM cash_movement WHERE id ${L} OR drawer_session_id ${L}`),
     stmt(env, `DELETE FROM staff_shift WHERE id ${L}`),
+    stmt(env, `DELETE FROM time_entry WHERE id ${L} OR staff_id ${L}`),
+    stmt(env, `DELETE FROM work_schedule WHERE id ${L} OR staff_id ${L}`),
     stmt(env, `DELETE FROM drawer_session WHERE id ${L}`),
     stmt(env, `DELETE FROM stock_movement WHERE id ${L} OR ingredient_id ${L}`),
     stmt(env, `DELETE FROM stocktake_line WHERE ingredient_id ${L}`),

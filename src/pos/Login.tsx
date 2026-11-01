@@ -1,7 +1,7 @@
 // S01 — pick your name, enter PIN. Works offline with cached staff.
 import { useState } from 'react';
 import type { StaffPublic } from '../../shared/types';
-import { login, useStore } from '../lib/store';
+import { login, navigate, useStore } from '../lib/store';
 import { Icon, PinPad } from '../ui';
 
 const ROLE: Record<string, string> = { owner: 'Chủ quán', manager: 'Quản lý', staff: 'Nhân viên' };
@@ -26,6 +26,7 @@ export default function Login() {
         <div className="brand" style={{ fontSize: 28 }}>{cfg.outlet.name.toUpperCase()}</div>
         <p className="muted" style={{ margin: 0 }}>{cfg.device.name} · mã đơn {cfg.device.order_prefix}</p>
         <span className="small muted row"><span className={'dot' + (net.online ? '' : ' off')} />{net.online ? 'Đang kết nối' : 'Offline — vẫn bán được'}</span>
+        <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => navigate('clock')}><Icon name="clock" size={18} />Chấm công vào / ra ca</button>
       </section>
       <section className="login-panel">
         {!who ? (

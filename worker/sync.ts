@@ -3,9 +3,10 @@ import { computeTotals } from '../shared/pricing';
 import type { CashMovement, DrawerSession, Order, OrderLine, Promotion, PromotionItem, StaffShift, SyncRecord, ZReport } from '../shared/types';
 import { addDays, businessDay, ulid } from '../shared/util';
 import { configSnapshot } from './auth';
+import { deviceTimeData, pushTimeEntry } from './time';
 import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt, upsertStmt } from './http';
 
-const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at'];
+const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at', 'table_id', 'guests', 'prebill_at', 'merged_into'];
 const DRAWER_COLS = ['id', 'outlet_id', 'business_day', 'status', 'opened_by', 'opened_at', 'opening_float', 'opening_count_json', 'device_id', 'note', 'created_at', 'updated_at'];
 const SHIFT_COLS = ['id', 'staff_id', 'outlet_id', 'device_id', 'drawer_session_id', 'business_day', 'started_at', 'ended_at', 'created_at', 'updated_at'];
 const CASH_COLS = ['id', 'drawer_session_id', 'business_day', 'direction', 'amount', 'reason', 'note', 'photo_key', 'purchase_id', 'staff_id', 'approved_by', 'device_id', 'created_at', 'updated_at'];
@@ -22,14 +23,16 @@ export async function pull(c: Ctx) {
   const o = await outletInfo(c.env);
   const today = businessDay(serverTime, o.tz_offset_min, o.business_day_cutoff);
   const fromDay = addDays(today, -1);
-  const [config, drawers, shifts, orders, cash] = await Promise.all([
+  const [config, drawers, shifts, orders, cash, time] = await Promise.all([
     configSnapshot(c.env, c.device),
     all<DrawerSession>(c.env, "SELECT * FROM drawer_session WHERE status='open' OR business_day >= ? ORDER BY opened_at", fromDay),
     all<StaffShift>(c.env, 'SELECT * FROM staff_shift WHERE ended_at IS NULL OR business_day >= ?', fromDay),
-    loadOrders(c.env, 'WHERE o.updated_at > ? AND o.business_day >= ?', since, fromDay),
+    // Open tabs/tables are always included, however old, so a new device sees every occupied table.
+    loadOrders(c.env, "WHERE o.updated_at > ? AND (o.business_day >= ? OR o.status IN ('open','awaiting_payment'))", since, fromDay),
     all<CashMovement>(c.env, 'SELECT * FROM cash_movement WHERE updated_at > ? AND business_day >= ?', since, fromDay),
+    deviceTimeData(c.env, today),
   ]);
-  return json({ serverTime, config, drawers, shifts, orders, cashMovements: cash });
+  return json({ serverTime, config, drawers, shifts, orders, cashMovements: cash, ...time });
 }
 
 export async function loadOrders(env: Env, where: string, ...args: unknown[]): Promise<Order[]> {
@@ -63,6 +66,7 @@ export async function push(c: Ctx) {
         case 'order': await pushOrder(c, r.data); break;
         case 'drawer_session': await pushDrawer(c, r.data); break;
         case 'staff_shift': await batch(c.env, [upsertStmt(c.env, 'staff_shift', { ...r.data, device_id: c.device!.id }, SHIFT_COLS)]); break;
+        case 'time_entry': await pushTimeEntry(c, r.data); break;
         case 'cash_movement': await batch(c.env, [upsertStmt(c.env, 'cash_movement', { ...r.data, device_id: c.device!.id }, CASH_COLS)]); break;
         case 'audit_log': await batch(c.env, [stmt(c.env,
           'INSERT OR IGNORE INTO audit_log (id,outlet_id,device_id,at,actor_id,approver_id,action,entity,entity_id,before_json,after_json,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -88,7 +92,10 @@ async function pushOrder(c: Ctx, o: Order) {
   const existing = await first<{ status: string; stock_applied: number; short_code: string }>(env, 'SELECT status,stock_applied,short_code FROM sale_order WHERE id=?', o.id);
   // Paid orders are immutable: the only allowed changes are open→*, awaiting→paid/void and paid→void.
   if (existing) {
-    if (existing.status === 'void') return;
+    if (existing.status === 'void') {
+      if (o.status === 'open') throw new Error(`Tab #${existing.short_code} đã được gộp hoặc huỷ trên máy khác — các món thêm sau không được lưu`);
+      return;
+    }
     if (existing.status === 'paid' && o.status !== 'void') {
       if (o.status === 'open') throw new Error(`Tab #${existing.short_code} đã được thanh toán trên máy khác — các món thêm sau không được lưu`);
       return;
@@ -103,8 +110,9 @@ async function pushOrder(c: Ctx, o: Order) {
   const row = { ...o, outlet_id: c.device!.outlet_id, device_id: o.device_id || c.device!.id, short_code: shortCode, stock_applied: existing?.stock_applied ?? 0, cost_total: 0, comp_total: o.comp_total ?? 0, tip_total: tipTotal, updated_at: now() };
   const stmts: D1PreparedStatement[] = [];
   if (existing) {
-    stmts.push(stmt(env, `UPDATE sale_order SET status=?, paid_at=?, void_reason=?, voided_by=?, approved_by=?, voided_at=?, customer_label=?, order_type=?, subtotal=?, promo_total=?, discount_total=?, comp_total=?, tip_total=?, total=?, drawer_session_id=COALESCE(?, drawer_session_id), updated_at=? WHERE id=?`,
-      o.status, o.paid_at, o.void_reason, o.voided_by, o.approved_by, o.voided_at, o.customer_label, o.order_type, o.subtotal, o.promo_total, o.discount_total, row.comp_total, tipTotal, o.total, o.drawer_session_id, row.updated_at, o.id));
+    stmts.push(stmt(env, `UPDATE sale_order SET status=?, paid_at=?, void_reason=?, voided_by=?, approved_by=?, voided_at=?, customer_label=?, order_type=?, subtotal=?, promo_total=?, discount_total=?, comp_total=?, tip_total=?, total=?, drawer_session_id=COALESCE(?, drawer_session_id), table_id=?, guests=?, prebill_at=?, merged_into=?, updated_at=? WHERE id=?`,
+      o.status, o.paid_at, o.void_reason, o.voided_by, o.approved_by, o.voided_at, o.customer_label, o.order_type, o.subtotal, o.promo_total, o.discount_total, row.comp_total, tipTotal, o.total, o.drawer_session_id,
+      o.table_id ?? null, o.guests ?? null, o.prebill_at ?? null, o.merged_into ?? null, row.updated_at, o.id));
   } else {
     stmts.push(upsertStmt(env, 'sale_order', row, ORDER_COLS));
   }
@@ -262,7 +270,7 @@ export async function zReport(env: Env, drawerId: string): Promise<ZReport> {
   const [paid, voids, pays, pending, cash, tabs] = await Promise.all([
     first<{ n: number; gross: number; promo: number; disc: number; net: number; comp: number }>(env,
       "SELECT COUNT(*) n, COALESCE(SUM(subtotal),0) gross, COALESCE(SUM(promo_total),0) promo, COALESCE(SUM(discount_total),0) disc, COALESCE(SUM(total),0) net, COALESCE(SUM(comp_total),0) comp FROM sale_order WHERE drawer_session_id=? AND status='paid'", drawerId),
-    first<{ n: number; v: number }>(env, "SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM sale_order WHERE drawer_session_id=? AND status='void'", drawerId),
+    first<{ n: number; v: number }>(env, "SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM sale_order WHERE drawer_session_id=? AND status='void' AND merged_into IS NULL", drawerId),
     all<{ method: string; amount: number; change: number; tip: number }>(env,
       "SELECT p.method, COALESCE(SUM(p.amount),0) amount, COALESCE(SUM(p.change_given),0) change, COALESCE(SUM(p.tip),0) tip FROM payment p JOIN sale_order o ON o.id=p.order_id WHERE o.drawer_session_id=? AND o.status='paid' AND p.status='confirmed' GROUP BY p.method", drawerId),
     first<{ n: number }>(env, "SELECT COUNT(*) n FROM sale_order WHERE drawer_session_id=? AND status='awaiting_payment'", drawerId),

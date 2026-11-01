@@ -11,7 +11,7 @@ npm install
 npx wrangler login
 npx wrangler d1 create dui-pos            # chép database_id in ra vào wrangler.jsonc
 npx wrangler r2 bucket create dui-pos-media
-npm test                                   # 32 kiểm tra: BOGO, tab, mời, tip, webhook, VietQR, kho, két
+npm test                                   # 39 kiểm tra: BOGO, tab, bàn, mời, tip, webhook, VietQR, kho, két, chấm công
 npm run deploy                             # build + migrate D1 + deploy
 ```
 
@@ -60,6 +60,22 @@ npm run dev            # app ở :5173, gọi /api qua proxy
 
 ## Mới trong bản này
 
+- **Sơ đồ bàn** (nút "Bàn" trên màn bán, hoặc menu ☰ › Sơ đồ bàn). Có sẵn 6 bàn (Bàn 1–6, khu "Trong nhà"); thêm/sửa trong Quản trị › Sơ đồ bàn: chạm ô trống để thêm bàn, kéo để đổi chỗ, nhiều khu vực, "+ Nhiều bàn" để tạo nhanh.
+  - Bàn trống → chọn số khách → chọn món → **Gửi món**. Bàn chuyển màu cam (có khách), **chưa thanh toán**; phiếu pha chế in cho quầy bar nếu bật.
+  - Chạm bàn có khách: xem món, **Gọi thêm**, **In tạm tính** (bàn chuyển xanh "đã in tạm tính", vẫn chưa thanh toán), **Chuyển bàn**, **Gộp bàn**, **Thanh toán**, Huỷ bàn (cần quản lý).
+  - Thanh toán xong bàn tự trống; màn "Đã thanh toán" quay về sơ đồ bàn. Bàn chờ chuyển khoản hiện màu tím.
+  - Hai máy dùng chung sơ đồ. Nếu hai máy cùng mở một bàn khi mất mạng, bàn hiện "2 đơn" và có nút gộp. Món gọi thêm vào một bàn đã gộp/đã thanh toán trên máy khác bị từ chối (báo ở màn Đồng bộ) thay vì mất âm thầm.
+  - Đơn gộp không tính là đơn huỷ trong Z-report và báo cáo.
+- **Giờ làm (chấm công + lịch làm)**:
+  - Màn đăng nhập có nút **Chấm công vào / ra ca**: chọn tên, nhập PIN, Vào ca / Ra ca (chọn phút nghỉ). Dùng được cho cả người không bán hàng, chạy cả khi offline.
+  - Mở ca bán hàng tự chấm công vào. Kết ca có nút "Kết ca & chấm công ra" hoặc "Chỉ đăng xuất (vẫn đang làm)".
+  - Menu ☰ › Chấm công · lịch làm: nhân viên xem giờ đang làm, lịch tuần và giờ đã làm.
+  - Quản trị › **Giờ làm** › Bảng công: theo tuần/tháng, mỗi người: số ca, giờ làm, giờ đêm (22:00–06:00), giờ theo lịch, số lần trễ, tip; chủ quán thấy thêm lương giờ và lương tạm tính. Cảnh báo "quên ra ca" (không tính lương cho tới khi sửa). Sửa / thêm tay / xoá cần lý do, ghi nhật ký; máy bán hàng gửi lại bản cũ cũng không ghi đè bản quản lý đã sửa. Xuất CSV.
+  - Lịch làm: lưới nhân viên × 7 ngày, chạm để xếp ca (ca qua đêm 17:00–01:30), chép lịch tuần trước.
+  - Lương giờ đặt ở Quản trị › Nhân viên (chỉ chủ quán thấy, không gửi xuống máy bán hàng). Phụ cấp đêm % và số phút cho phép trễ ở Cài đặt.
+
+## Bản trước
+
 - **Tab mở**: lưu đơn thành tab theo tên khách, gọi thêm nhiều lượt, thanh toán một lần. Tab dùng chung 2 máy; lượt gọi từ 2 máy được gộp trên server. Bỏ món đã gửi cần quản lý duyệt + lý do. Không đóng được két khi còn tab mở.
 - **Ly mời**: chạm vào món › "Mời ly này", chọn lý do, quản lý duyệt. Khách không trả, kho vẫn trừ, giá vốn vẫn tính; báo cáo riêng (Z-report, Tổng quan, Excel).
 - **Tip**: chọn tip % cho thẻ/chuyển khoản; tiền mặt có ô "Khách để lại tiền thối làm tip". Tip không tính vào doanh thu, tip tiền mặt được cộng vào tiền dự kiến của két; Tổng quan có tip theo nhân viên thu.
@@ -85,7 +101,7 @@ Quản trị › Cài đặt › **Dữ liệu demo** › "Tạo dữ liệu dem
 
 ## Chưa làm
 
-Chia bill, giảm giá thủ công, hoàn tiền một phần, bar display, chi phí định kỳ, menu engineering, khoá sổ tháng, tích hợp hoá đơn điện tử, nhiều outlet.
+Tách bill theo món/người, đặt bàn trước, giảm giá thủ công, hoàn tiền một phần, bar display, chi phí định kỳ, menu engineering, khoá sổ tháng, tích hợp hoá đơn điện tử, nhiều outlet.
 
 ## Lưu ý vận hành
 

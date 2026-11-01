@@ -10,12 +10,18 @@ function optText(cfg: PosConfig, l: OrderLine) {
   return [...opts, l.note].filter(Boolean).join(', ');
 }
 
-function header(cfg: PosConfig, o: Order, title: string): PLine[] {
+function title(cfg: PosConfig, o: Order) {
+  return [cfg.tables?.find((t) => t.id === o.table_id)?.name, o.customer_label].filter(Boolean).join(' · ');
+}
+
+function header(cfg: PosConfig, o: Order, title_: string): PLine[] {
   const tz = cfg.outlet.tz_offset_min;
   const out: PLine[] = [{ t: 'text', text: cfg.outlet.name.toUpperCase(), align: 'center', size: 'lg', bold: true }];
   if (cfg.outlet.receipt_header) out.push({ t: 'text', text: cfg.outlet.receipt_header, align: 'center', size: 'sm' });
-  out.push({ t: 'space', h: 6 }, { t: 'text', text: title, align: 'center', size: 'md', bold: true });
-  out.push({ t: 'row', left: `#${o.short_code}${o.customer_label ? ' · ' + o.customer_label : ''}`, right: hhmm(o.paid_at ?? o.created_at, tz), size: 'sm' });
+  out.push({ t: 'space', h: 6 }, { t: 'text', text: title_, align: 'center', size: 'md', bold: true });
+  const name = title(cfg, o);
+  out.push({ t: 'row', left: `#${o.short_code}${name ? ' · ' + name : ''}`, right: hhmm(o.paid_at ?? Date.now(), tz), size: 'sm' });
+  if (o.guests) out.push({ t: 'row', left: `${o.guests} khách`, right: `Vào ${hhmm(o.created_at, tz)}`, size: 'sm' });
   out.push({ t: 'row', left: fmtDay(o.business_day), right: cfg.staff.find((s) => s.id === o.staff_id)?.name ?? '', size: 'sm' });
   out.push({ t: 'hr' });
   return out;
@@ -61,7 +67,7 @@ export function ticketDoc(cfg: PosConfig, o: Order, newLines: OrderLine[]): PLin
   const tz = cfg.outlet.tz_offset_min;
   const doc: PLine[] = [
     { t: 'text', text: `#${o.short_code}`, size: 'xl', bold: true },
-    { t: 'row', left: o.customer_label || (o.order_type === 'takeaway' ? 'Mang đi' : 'Tại chỗ'), right: hhmm(Date.now(), tz), bold: true },
+    { t: 'row', left: title(cfg, o) || (o.order_type === 'takeaway' ? 'Mang đi' : 'Tại chỗ'), right: hhmm(Date.now(), tz), bold: true },
     { t: 'hr', dashed: false },
   ];
   for (const l of newLines) {

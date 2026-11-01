@@ -4,9 +4,9 @@ import { DENOMINATIONS, type ZReport } from '../../shared/types';
 import { fmtDay, hhmm, vnd } from '../../shared/util';
 import { api } from '../lib/api';
 import { kv } from '../lib/db';
-import { endMyShift, getManagerSession, getState, lock, navigate, setState, staffName, toast, useStore } from '../lib/store';
+import { endMyShift, openEntry, getManagerSession, getState, lock, navigate, setState, staffName, toast, useStore, orderTitle } from '../lib/store';
 import { runSync } from '../lib/sync';
-import { Confirm, Icon, TopBar } from '../ui';
+import { Icon, Sheet, TopBar } from '../ui';
 
 export default function CloseShift() {
   const staff = useStore((s) => s.staff)!;
@@ -16,6 +16,9 @@ export default function CloseShift() {
   const net = useStore((s) => s.net);
   const [mode, setMode] = useState<'menu' | 'count' | 'report'>('menu');
   const [askEnd, setAskEnd] = useState(false);
+  useStore((s) => s.timeEntries);
+  const clocked = openEntry(staff.id);
+  const tz = useStore((s) => s.config!.outlet.tz_offset_min);
   const [z, setZ] = useState<ZReport | null>(null);
   const myShiftOrders = orders.filter((o) => shift && o.staff_shift_id === shift.id && o.status === 'paid');
   const awaiting = orders.filter((o) => o.status === 'awaiting_payment' && o.drawer_session_id === drawer?.id);
@@ -42,14 +45,24 @@ export default function CloseShift() {
           ) : <div className="small muted">Không có két đang mở.</div>}
           {net.pending > 0 && <div className="banner">Còn {net.pending} bản ghi chưa đồng bộ trên máy này. Đồng bộ trước khi đóng két.</div>}
           {awaiting.length > 0 && <div className="banner">Còn {awaiting.length} đơn chờ chuyển khoản. Xác nhận hoặc huỷ trước khi đóng.</div>}
-          {openTabs.length > 0 && <div className="banner danger">Còn {openTabs.length} tab đang mở ({openTabs.map((t) => t.customer_label || t.short_code).join(', ')}). Thanh toán hoặc huỷ tab trước khi đóng két.</div>}
+          {openTabs.length > 0 && <div className="banner danger">Còn {openTabs.length} tab đang mở ({openTabs.map((t) => orderTitle(t) || t.short_code).join(', ')}). Thanh toán hoặc huỷ tab trước khi đóng két.</div>}
           {!net.online && <div className="banner danger">Đóng két cần có mạng để cộng tiền từ tất cả máy.</div>}
           <p className="small muted" style={{ margin: 0 }}>Cần quản lý. Ca của mọi người trên két này sẽ kết thúc.</p>
           <button className="btn primary block" disabled={!drawer || !net.online || openTabs.length > 0} onClick={async () => { await runSync(); setMode('count'); }}>Đếm tiền & đóng két</button>
         </div>
         <p className="small faint">Đang đăng nhập: {staff.name}</p>
       </div>
-      {askEnd && <Confirm title="Kết thúc ca?" text="Bạn sẽ được đăng xuất." okText="Kết thúc ca" onCancel={() => setAskEnd(false)} onOk={() => { setAskEnd(false); endMyShift(); }} />}
+      {askEnd && (
+        <Sheet middle onClose={() => setAskEnd(false)}>
+          <h2>Kết thúc ca?</h2>
+          <p className="small muted" style={{ marginTop: 4 }}>Bạn sẽ được đăng xuất khỏi máy bán hàng.{clocked ? ` Đang chấm công từ ${hhmm(clocked.clock_in, tz)}.` : ''}</p>
+          <div className="col gap12 mt16">
+            {clocked && <button className="btn primary lg" onClick={() => { setAskEnd(false); endMyShift(true); }}><Icon name="clock" size={20} />Kết ca & chấm công ra</button>}
+            <button className={'btn lg' + (clocked ? '' : ' primary')} onClick={() => { setAskEnd(false); endMyShift(false); }}>{clocked ? 'Chỉ đăng xuất (vẫn đang làm)' : 'Kết thúc ca'}</button>
+            <button className="btn ghost" onClick={() => setAskEnd(false)}>Huỷ</button>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }

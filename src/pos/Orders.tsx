@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
 import { fmtDay, hhmm, vnd } from '../../shared/util';
 import { outbox } from '../lib/db';
-import { isManager, navigate, staffName, today, useStore } from '../lib/store';
+import { isManager, navigate, staffName, today, useStore, orderTitle } from '../lib/store';
 import { Empty, Segmented, TopBar } from '../ui';
 
 const METHOD: Record<string, string> = { cash: 'Tiền mặt', vietqr: 'VietQR', card: 'Thẻ' };
@@ -40,7 +40,7 @@ export default function Orders() {
             {list.map((o) => (
               <button key={o.id} className="li" onClick={() => navigate('order/' + o.id)}>
                 <div className="grow col" style={{ gap: 2 }}>
-                  <span className="semibold">#{o.short_code}<span className="muted"> · {hhmm(o.created_at, cfg.outlet.tz_offset_min)}{o.customer_label ? ` · ${o.customer_label}` : ''}</span></span>
+                  <span className="semibold">#{o.short_code}<span className="muted"> · {hhmm(o.created_at, cfg.outlet.tz_offset_min)}{orderTitle(o) ? ` · ${orderTitle(o)}` : ''}</span></span>
                   <span className="small muted">{methodLabel(o)} · {staffName(o.staff_id)}{unsynced.has(o.id) && <span className="accent"> · chưa đồng bộ</span>}{o.tip_total ? <span className="ok"> · tip {vnd(o.tip_total, false)}</span> : null}</span>
                 </div>
                 {o.status === 'awaiting_payment' && <span className="badge info">Chờ CK</span>}

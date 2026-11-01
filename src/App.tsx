@@ -15,6 +15,8 @@ import OrderDetail from './pos/OrderDetail';
 import OrderScreen from './pos/OrderScreen';
 import PrinterSettings from './pos/PrinterSettings';
 import Tabs from './pos/Tabs';
+import Tables from './pos/Tables';
+import TimeClock from './pos/TimeClock';
 import Orders from './pos/Orders';
 import { Register, Setup } from './pos/Setup';
 import SyncStatus from './pos/SyncStatus';
@@ -26,6 +28,7 @@ export default function App() {
   const bootState = useStore((s) => s.boot);
   const route = useStore((s) => s.route);
   const staff = useStore((s) => s.staff);
+  const hasConfig = useStore((s) => !!s.config);
 
   useEffect(() => {
     if (started) return;
@@ -49,6 +52,7 @@ export default function App() {
   if (bootState === 'loading') view = <div className="screen center row muted">Đang tải…</div>;
   else if (bootState === 'setup') view = <Setup />;
   else if (bootState === 'register') view = <Register />;
+  else if (route === 'clock' && hasConfig) view = <TimeClock />;
   else if (!staff || route === 'login') view = <Login />;
   else view = pick(route);
 
@@ -67,6 +71,7 @@ function pick(route: string): JSX.Element {
   switch (route) {
     case 'open-shift': return <OpenShift />;
     case 'tabs': return <Tabs />;
+    case 'tables': return <Tables />;
     case 'printer': return <PrinterSettings />;
     case 'cart': return <Cart />;
     case 'checkout': return <Checkout />;

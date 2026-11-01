@@ -6,6 +6,7 @@ import { needsSetup, registerDevice, resolveDevice, resolveStaff, setup, staffLo
 import * as fin from './finance';
 import { type Ctx, type Env, HttpError, json, Router } from './http';
 import * as inv from './inventory';
+import * as time from './time';
 import { closeDrawer, getZReport, pull, push } from './sync';
 
 const r = new Router()
@@ -45,10 +46,22 @@ const r = new Router()
   .add('PUT', '/api/admin/item/:id/groups', 'staff', admin.setItemGroups)
   .add('GET', '/api/admin/promotion/:id/items', 'staff', admin.getPromoItems)
   .add('PUT', '/api/admin/promotion/:id/items', 'staff', admin.setPromoItems)
+  .add('POST', '/api/admin/tables/bulk', 'staff', admin.bulkTables)
+  .add('POST', '/api/admin/tables/area', 'staff', admin.renameArea)
   .add('GET', '/api/admin/t/:table', 'staff', admin.list)
   .add('POST', '/api/admin/t/:table', 'staff', admin.create)
   .add('PUT', '/api/admin/t/:table/:id', 'staff', admin.update)
   .add('DELETE', '/api/admin/t/:table/:id', 'staff', admin.remove)
+
+  // time clock & schedule
+  .add('GET', '/api/time/sheet', 'staff', time.sheet)
+  .add('POST', '/api/time/entries', 'staff', time.addEntry)
+  .add('PUT', '/api/time/entries/:id', 'staff', time.editEntry)
+  .add('POST', '/api/time/entries/:id/delete', 'staff', time.deleteEntry)
+  .add('POST', '/api/time/schedule', 'staff', time.addShift)
+  .add('POST', '/api/time/schedule/copy', 'staff', time.copyWeek)
+  .add('PUT', '/api/time/schedule/:id', 'staff', time.editShift)
+  .add('DELETE', '/api/time/schedule/:id', 'staff', time.deleteShift)
 
   // inventory & recipes
   .add('GET', '/api/inv/ingredients', 'staff', inv.listIngredients)

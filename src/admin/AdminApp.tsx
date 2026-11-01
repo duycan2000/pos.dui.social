@@ -16,6 +16,8 @@ import Promotions from './Promotions';
 import Reports from './Reports';
 import { Devices, Settings } from './Settings';
 import Staff from './Staff';
+import FloorEditor from './FloorEditor';
+import TimeSheet from './TimeSheet';
 
 type Role = 'owner' | 'manager';
 const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, roles: Role[]][] }[] = [
@@ -23,6 +25,7 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', 'tag', ['owner', 'manager']],
     ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', ['owner', 'manager']],
     ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', ['owner']],
+    ['admin/tables', 'Sơ đồ bàn', 'Khu vực, bàn, số ghế', 'table', ['owner', 'manager']],
   ] },
   { group: 'Kho', items: [
     ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', ['owner', 'manager']],
@@ -37,7 +40,8 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/reports', 'Báo cáo thuế', 'Tháng / quý / năm, Excel', 'receipt', ['owner', 'manager']],
   ] },
   { group: 'Hệ thống', items: [
-    ['admin/staff', 'Nhân viên', 'PIN, vai trò, hạn mức', 'users', ['owner']],
+    ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', ['owner', 'manager']],
+    ['admin/staff', 'Nhân viên', 'PIN, vai trò, lương giờ', 'users', ['owner']],
     ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', 'phone', ['owner']],
     ['admin/settings', 'Cài đặt', 'VietQR, webhook, cut-off, thuế', 'settings', ['owner']],
     ['admin/audit', 'Nhật ký', 'Huỷ, mời, đổi giá, thu chi', 'clock', ['owner', 'manager']],
@@ -107,6 +111,8 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
     case 'bank': return <BankTxns />;
     case 'reports': return <Reports />;
     case 'staff': return <Staff />;
+    case 'tables': return <FloorEditor />;
+    case 'time': return <TimeSheet />;
     case 'audit': return <Audit />;
     case 'settings': return <Settings />;
     case 'devices': return <Devices />;

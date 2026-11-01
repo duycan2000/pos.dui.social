@@ -13,6 +13,7 @@ const TABLES: Record<string, TableDef> = {
   modifier_option: { cols: ['group_id', 'name_en', 'name_vi', 'price_delta', 'is_default', 'excludes_promo', 'sort', 'active'], roles: ['owner', 'manager'], order: 'sort', soft: true },
   promotion: { cols: ['name', 'type', 'active', 'start_date', 'end_date', 'days_of_week', 'time_from', 'time_to', 'rule_json'], roles: ['owner'], order: 'name', soft: true },
   supplier: { cols: ['name', 'phone', 'note', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
+  dining_table: { cols: ['area', 'name', 'seats', 'x', 'y', 'w', 'h', 'shape', 'sort', 'active'], roles: ['owner', 'manager'], order: 'area, sort, name', soft: true },
   ingredient: { cols: ['name', 'kind', 'base_unit', 'purchase_unit', 'base_per_purchase', 'yield_pct', 'avg_cost_per_base', 'min_stock_base', 'recipe_yield_base', 'default_supplier_id', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
 };
 
@@ -79,6 +80,10 @@ export async function update(c: Ctx) {
 export async function remove(c: Ctx) {
   const d = def(c);
   const table = c.params.table;
+  if (table === 'dining_table') {
+    const busy = await first<{ n: number }>(c.env, "SELECT COUNT(*) n FROM sale_order WHERE table_id=? AND status IN ('open','awaiting_payment')", c.params.id);
+    need(!busy?.n, 409, 'Bàn đang có khách. Thanh toán hoặc chuyển bàn trước khi xoá.');
+  }
   if (d.soft) {
     await batch(c.env, [
       stmt(c.env, `UPDATE ${table} SET active=0, updated_at=? WHERE id=?`, now(), c.params.id),
@@ -134,15 +139,18 @@ export async function setPromoItems(c: Ctx) {
 // ----- staff -----
 
 const STAFF_SAFE = 'id,name,role,active,max_discount_pct,cash_out_limit,created_at,updated_at';
+/** The owner also sees pay rates. */
+const staffCols = (c: Ctx) => (c.staff?.role === 'owner' ? STAFF_SAFE + ',hourly_rate' : STAFF_SAFE);
 
 export async function listStaff(c: Ctx) {
   requireRole(c, 'owner', 'manager');
-  return json(await all(c.env, `SELECT ${STAFF_SAFE} FROM staff ORDER BY active DESC, role, name`));
+  return json(await all(c.env, `SELECT ${staffCols(c)} FROM staff ORDER BY active DESC, role, name`));
 }
 
 export async function saveStaff(c: Ctx) {
   requireRole(c, 'owner');
-  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number }>(c);
+  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number }>(c);
+  if (b.hourly_rate !== undefined) need(Number.isInteger(b.hourly_rate) && b.hourly_rate >= 0 && b.hourly_rate <= 10_000_000, 400, 'Lương giờ không hợp lệ');
   const id = c.params.id || ulid();
   const existing = c.params.id ? await first<{ role: Role; active: number }>(c.env, 'SELECT role,active FROM staff WHERE id=?', id) : null;
   if (c.params.id) need(existing, 404, 'Không tìm thấy nhân viên');
@@ -158,13 +166,13 @@ export async function saveStaff(c: Ctx) {
     need(b.pin && validPin(b.pin, b.role), 400, pinRule(b.role!));
     const salt = randomHex(8);
     const outlet = await first<{ id: string }>(c.env, 'SELECT id FROM outlet LIMIT 1');
-    stmts.push(stmt(c.env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?)',
-      id, outlet!.id, b.name!.trim(), salt, await hashPin(b.pin, salt), b.role, b.max_discount_pct ?? 0, b.cash_out_limit ?? 100000, t, t));
+    stmts.push(stmt(c.env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,hourly_rate,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)',
+      id, outlet!.id, b.name!.trim(), salt, await hashPin(b.pin, salt), b.role, b.max_discount_pct ?? 0, b.cash_out_limit ?? 100000, b.hourly_rate ?? 0, t, t));
   } else {
     if (b.role && b.role !== 'staff' && existing.role === 'staff') need(b.pin, 400, 'Đổi lên quản lý cần đặt PIN mới 6 chữ số');
     const sets: string[] = [];
     const vals: unknown[] = [];
-    for (const k of ['name', 'role', 'active', 'max_discount_pct', 'cash_out_limit'] as const) {
+    for (const k of ['name', 'role', 'active', 'max_discount_pct', 'cash_out_limit', 'hourly_rate'] as const) {
       if (b[k] !== undefined) { sets.push(`${k}=?`); vals.push(b[k]); }
     }
     if (b.pin) {
@@ -180,7 +188,7 @@ export async function saveStaff(c: Ctx) {
   const safe = { ...b, pin: b.pin ? '••••' : undefined };
   stmts.push(auditStmt(c.env, { action: existing ? 'staff_update' : 'staff_create', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, after: safe }, ulid()));
   await batch(c.env, stmts);
-  return json(await first(c.env, `SELECT ${STAFF_SAFE} FROM staff WHERE id=?`, id));
+  return json(await first(c.env, `SELECT ${staffCols(c)} FROM staff WHERE id=?`, id));
 }
 
 // ----- outlet -----
@@ -271,4 +279,45 @@ export async function publicMenu(c: Ctx) {
   res.headers.set('access-control-allow-origin', '*');
   res.headers.set('cache-control', 'public, max-age=60');
   return res;
+}
+
+// ----- floor plan -----
+
+/** Add several tables at once ("Bàn 7" … "Bàn 12"), placed on free cells of the area's grid. */
+export async function bulkTables(c: Ctx) {
+  requireRole(c, 'owner', 'manager');
+  const b = await body<{ area?: string; prefix?: string; start?: number; count?: number; seats?: number }>(c);
+  const area = (b.area || '').trim() || 'Trong nhà';
+  const count = Math.round(b.count || 0);
+  need(count >= 1 && count <= 40, 400, 'Số bàn từ 1 đến 40');
+  const start = Math.max(0, Math.round(b.start ?? 1));
+  const prefix = (b.prefix ?? 'Bàn').trim();
+  const existing = await all<{ x: number; y: number; w: number; h: number; sort: number }>(c.env, 'SELECT x,y,w,h,sort FROM dining_table WHERE area=? AND active=1', area);
+  const used = new Set<string>();
+  for (const t of existing) for (let i = 0; i < t.w; i++) for (let j = 0; j < t.h; j++) used.add(`${t.x + i},${t.y + j}`);
+  const cols = 6;
+  const maxSort = (await first<{ m: number }>(c.env, 'SELECT COALESCE(MAX(sort),0) m FROM dining_table'))?.m ?? 0;
+  const t = now();
+  const stmts: D1PreparedStatement[] = [];
+  let cell = 0;
+  for (let n = 0; n < count; n++) {
+    // Leave a gap column/row between tables so the map reads like a room.
+    while (used.has(`${(cell % (cols / 2)) * 2},${Math.floor(cell / (cols / 2)) * 2}`)) cell++;
+    const x = (cell % (cols / 2)) * 2;
+    const y = Math.floor(cell / (cols / 2)) * 2;
+    used.add(`${x},${y}`);
+    stmts.push(stmt(c.env, 'INSERT INTO dining_table (id,area,name,seats,x,y,w,h,shape,sort,active,created_at,updated_at) VALUES (?,?,?,?,?,?,1,1,?,?,1,?,?)',
+      ulid(), area, `${prefix} ${start + n}`.trim(), Math.max(1, Math.round(b.seats || 4)), x, y, 'square', maxSort + n + 1, t, t));
+  }
+  stmts.push(auditStmt(c.env, { action: 'tables_bulk', entity: 'dining_table', actor_id: c.staff!.id, device_id: c.device!.id, after: { area, prefix, start, count } }, ulid()));
+  await batch(c.env, stmts);
+  return json(await all(c.env, 'SELECT * FROM dining_table WHERE active=1 ORDER BY area, sort, name'), 201);
+}
+
+export async function renameArea(c: Ctx) {
+  requireRole(c, 'owner', 'manager');
+  const b = await body<{ from?: string; to?: string }>(c);
+  need(b.from && b.to?.trim(), 400, 'Thiếu tên khu vực');
+  await batch(c.env, [stmt(c.env, 'UPDATE dining_table SET area=?, updated_at=? WHERE area=?', b.to!.trim(), now(), b.from)]);
+  return json({ ok: true });
 }

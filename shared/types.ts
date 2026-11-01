@@ -25,6 +25,10 @@ export interface OutletSettings {
   done_return_seconds?: number;
   /** Free-text tax method note. Rates are never hard-coded. */
   tax_note?: string;
+  /** Extra pay for hours worked 22:00–06:00, % of the hourly rate (0 = none). */
+  night_premium_pct?: number;
+  /** Minutes after the scheduled start before a clock-in counts as late. */
+  late_grace_min?: number;
 }
 
 export interface StaffPublic {
@@ -56,6 +60,21 @@ export interface Promotion {
 }
 export interface PromotionItem { promotion_id: string; item_id: string }
 
+export interface DiningTable {
+  id: string; area: string; name: string; seats: number; x: number; y: number; w: number; h: number;
+  shape: 'square' | 'round' | 'bar'; sort: number; active?: number;
+}
+
+/** Chấm công: one clock-in to clock-out. */
+export interface TimeEntry {
+  id: string; staff_id: string; business_day: string; clock_in: number; clock_out: number | null; break_min: number;
+  device_id: string | null; source: 'pos' | 'admin'; note: string | null; edited_by?: string | null; edited_at?: number | null;
+  created_at: number; updated_at: number;
+}
+
+/** Lịch làm: a planned shift on a business day. end < start = ends after midnight. */
+export interface WorkShift { id: string; staff_id: string; day: string; start: string; end: string; note: string | null }
+
 export interface DeviceInfo { id: string; name: string; order_prefix: string; outlet_id: string }
 
 export interface PosConfig {
@@ -69,6 +88,7 @@ export interface PosConfig {
   itemModifierGroups: ItemModifierGroup[];
   promotions: Promotion[];
   promotionItems: PromotionItem[];
+  tables?: DiningTable[];
   features?: { bankWebhook: boolean };
 }
 
@@ -145,6 +165,13 @@ export interface Order {
   comp_total?: number;
   tip_total?: number;
   total: number;
+  /** Dine-in table. Unpaid until checkout; the table shows as busy while the order is open. */
+  table_id?: string | null;
+  guests?: number | null;
+  /** When the pre-bill (tạm tính) was printed. Cleared when a new round is sent. */
+  prebill_at?: number | null;
+  /** This tab was merged into another order (kept as void with zero totals). */
+  merged_into?: string | null;
   sent_at: number | null;
   paid_at: number | null;
   void_reason: string | null;
@@ -201,7 +228,8 @@ export type SyncRecord =
   | { type: 'drawer_session'; data: DrawerSession }
   | { type: 'staff_shift'; data: StaffShift }
   | { type: 'cash_movement'; data: CashMovement }
-  | { type: 'audit_log'; data: AuditEntry };
+  | { type: 'audit_log'; data: AuditEntry }
+  | { type: 'time_entry'; data: TimeEntry };
 
 export interface ZReport {
   drawer_session_id: string;

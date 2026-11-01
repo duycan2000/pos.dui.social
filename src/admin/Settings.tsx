@@ -63,6 +63,13 @@ export function Settings() {
         <Num label="Cảnh báo giá vốn khi vượt (%)" value={st.cost_alert_pct ?? 30} onChange={(v) => setSt({ ...st, cost_alert_pct: v })} />
       </div>
 
+      <div className="section-title">Giờ làm</div>
+      <div className="form-grid">
+        <Num label="Phụ cấp giờ đêm 22:00–06:00 (% lương giờ, 0 = không)" value={st.night_premium_pct ?? 0} onChange={(v) => setSt({ ...st, night_premium_pct: Math.max(0, v) })} />
+        <Num label="Cho phép trễ (phút) trước khi tính đi trễ" value={st.late_grace_min ?? 10} onChange={(v) => setSt({ ...st, late_grace_min: Math.max(0, Math.round(v)) })} />
+      </div>
+      <p className="tiny faint" style={{ margin: 0 }}>Bộ luật Lao động quy định làm đêm được trả thêm ít nhất 30% — áp dụng thế nào cho nhân viên part-time theo giờ, hãy hỏi kế toán. Để 0 nếu lương giờ đã gồm phụ cấp.</p>
+
       <div className="section-title">Thuế (chỉ để theo dõi — xác nhận với kế toán)</div>
       <div className="banner">Luật thuế hộ kinh doanh thay đổi từ 2026 và còn đang được hướng dẫn. Không có tỷ lệ nào được cài sẵn trong code; mọi ngưỡng nhập ở đây.</div>
       <div className="form-grid">

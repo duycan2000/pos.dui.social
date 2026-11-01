@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react';
 import { verifyPin } from '../../shared/crypto';
 import { computeTotals, type Totals } from '../../shared/pricing';
 import type {
-  AuditEntry, CashMovement, ChosenOption, DrawerSession, Item, Order, OrderLine, Payment, PosConfig, StaffPublic, StaffShift,
+  AuditEntry, CashMovement, ChosenOption, DiningTable, DrawerSession, Item, Order, OrderLine, Payment, PosConfig, StaffPublic, StaffShift,
+  TimeEntry, WorkShift,
 } from '../../shared/types';
 import { addDays, businessDay, parseSettings, ulid } from '../../shared/util';
 import { api, setDeviceToken, setStaffSession } from './api';
@@ -18,6 +19,9 @@ export interface Cart {
   order_type: Order['order_type'];
   /** Set when the cart is an open tab loaded for another round or for payment. */
   tabCode?: string | null;
+  /** Dine-in table and number of guests. */
+  table_id?: string | null;
+  guests?: number | null;
 }
 
 export interface Approval {
@@ -45,6 +49,9 @@ export interface AppState {
   adminSession: string | null;
   approval: Approval | null;
   lastPaid: { order: Order; change: number } | null;
+  /** Time clock: open entries and the last two weeks (from the server plus not-yet-pushed local ones). */
+  timeEntries: TimeEntry[];
+  schedule: WorkShift[];
 }
 
 const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], customer_label: '', order_type: 'takeaway' });
@@ -52,7 +59,7 @@ const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], cu
 let state: AppState = {
   boot: 'loading', config: null, staff: null, shift: null, drawer: null, drawers: [], cart: newCart(), orders: [], cashMoves: [],
   net: { online: navigator.onLine, busy: false, pending: 0, lastSync: null, lastError: null },
-  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null,
+  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null, timeEntries: [], schedule: [],
 };
 const listeners = new Set<() => void>();
 
@@ -134,7 +141,8 @@ export async function loadLocal() {
     kv.get<PosConfig>('config'), kv.get<DrawerSession[]>('drawers'), table<Order>('orders').all(), table<CashMovement>('cash').all(),
   ]);
   const cart = (await kv.get<Cart>('cart')) || newCart();
-  setState({ config: config ?? null, drawers: drawers ?? [], orders: sortOrders(orders), cashMoves: cash, cart });
+  const [timeEntries, schedule] = await Promise.all([kv.get<TimeEntry[]>('timeEntries'), kv.get<WorkShift[]>('schedule')]);
+  setState({ config: config ?? null, drawers: drawers ?? [], orders: sortOrders(orders), cashMoves: cash, cart, timeEntries: timeEntries ?? [], schedule: schedule ?? [] });
   pickDrawer();
   await refreshPending();
 }
@@ -205,13 +213,15 @@ export async function openDrawerAndShift(openingFloat: number, counts: Record<st
   await kv.set('shift:' + shift.staff_id, shift);
   await outbox.add('staff_shift', shift);
   setState({ shift });
+  if (!openEntry(shift.staff_id)) await clockIn(shift.staff_id); // selling means working
   await refreshPending();
   syncKick();
   navigate('order');
 }
 
-export async function endMyShift() {
+export async function endMyShift(alsoClockOut = false) {
   const s = getState();
+  if (alsoClockOut && s.staff && openEntry(s.staff.id)) await clockOut(s.staff.id);
   if (s.shift) {
     const ended = { ...s.shift, ended_at: Date.now(), updated_at: Date.now() };
     await kv.set('shift:' + ended.staff_id, ended);
@@ -295,7 +305,7 @@ export async function compLine(id: string, on: boolean): Promise<boolean> {
   return true;
 }
 
-export async function setCartMeta(patch: Partial<Pick<Cart, 'customer_label' | 'order_type'>>) {
+export async function setCartMeta(patch: Partial<Pick<Cart, 'customer_label' | 'order_type' | 'table_id' | 'guests'>>) {
   await saveCart({ ...state.cart, ...patch });
 }
 
@@ -355,7 +365,10 @@ async function buildOrder(status: Order['status'], payments: Payment[]): Promise
     business_day: existing?.business_day ?? businessDay(t, cfg.outlet.tz_offset_min, cfg.outlet.business_day_cutoff),
     staff_id: existing?.staff_id ?? s.staff!.id, staff_shift_id: existing?.staff_shift_id ?? s.shift?.id ?? null,
     drawer_session_id: s.drawer?.id ?? existing?.drawer_session_id ?? null,
-    order_type: s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status,
+    order_type: s.cart.table_id ? 'dine_in' : s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status,
+    table_id: s.cart.table_id ?? null, guests: s.cart.guests ?? null,
+    // A new round makes an earlier pre-bill out of date.
+    prebill_at: newLines.length ? null : existing?.prebill_at ?? null, merged_into: null,
     subtotal: totals.subtotal, promo_total: totals.promo_total, discount_total: totals.discount_total, comp_total: totals.comp_total,
     tip_total: payments.reduce((a, p) => a + (p.tip || 0), 0), total: totals.total,
     sent_at: existing?.sent_at ?? t, paid_at: status === 'paid' ? t : null, void_reason: null, voided_by: null, approved_by: null, voided_at: null,
@@ -381,7 +394,7 @@ export async function saveToTab(): Promise<Order> {
 export async function openTab(orderId: string) {
   const o = state.orders.find((x) => x.id === orderId && x.status === 'open');
   if (!o) return;
-  await saveCart({ id: o.id, created_at: o.created_at, lines: o.lines.map((l) => ({ ...l })), customer_label: o.customer_label ?? '', order_type: o.order_type, tabCode: o.short_code });
+  await saveCart({ id: o.id, created_at: o.created_at, lines: o.lines.map((l) => ({ ...l })), customer_label: o.customer_label ?? '', order_type: o.order_type, tabCode: o.short_code, table_id: o.table_id ?? null, guests: o.guests ?? null });
 }
 
 /** Turn the cart into an order: paid now, or awaiting a bank transfer (VietQR). */
@@ -459,9 +472,10 @@ export async function pruneLocal() {
   if (!cfg) return;
   const keepFrom = addDays(today(), -3);
   const pendingIds = new Set((await outbox.all()).map((r) => r.id));
-  for (const o of state.orders) if (o.business_day < keepFrom && !pendingIds.has(o.id)) await table<Order>('orders').del(o.id);
+  const old = (o: Order) => o.business_day < keepFrom && !pendingIds.has(o.id) && o.status !== 'open' && o.status !== 'awaiting_payment';
+  for (const o of state.orders) if (old(o)) await table<Order>('orders').del(o.id);
   for (const m of state.cashMoves) if (m.business_day < keepFrom && !pendingIds.has(m.id)) await table<CashMovement>('cash').del(m.id);
-  setState((s) => ({ orders: s.orders.filter((o) => o.business_day >= keepFrom || pendingIds.has(o.id)), cashMoves: s.cashMoves.filter((m) => m.business_day >= keepFrom || pendingIds.has(m.id)) }));
+  setState((s) => ({ orders: s.orders.filter((o) => !old(o)), cashMoves: s.cashMoves.filter((m) => m.business_day >= keepFrom || pendingIds.has(m.id)) }));
 }
 
 /**
@@ -493,9 +507,129 @@ export async function cartAsOrder(): Promise<Order> {
   return {
     id: s.cart.id, outlet_id: cfg.outlet.id, device_id: cfg.device.id, short_code: await peekShortCode(),
     business_day: existing?.business_day ?? today(), staff_id: existing?.staff_id ?? s.staff?.id ?? '', staff_shift_id: null, drawer_session_id: s.drawer?.id ?? null,
-    order_type: s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status: s.cart.tabCode ? 'open' : 'open',
+    order_type: s.cart.order_type, customer_label: s.cart.customer_label.trim() || null, status: 'open', table_id: s.cart.table_id ?? null, guests: s.cart.guests ?? null,
     subtotal: t.subtotal, promo_total: t.promo_total, discount_total: t.discount_total, comp_total: t.comp_total, total: t.total,
     sent_at: null, paid_at: null, void_reason: null, voided_by: null, approved_by: null, voided_at: null,
     created_at: existing?.created_at ?? s.cart.created_at ?? now, updated_at: now, lines: s.cart.lines.filter((l) => l.status === 'active'), adjustments: t.adjustments, payments: [],
   };
+}
+
+// ---------- tables (dine-in) ----------
+// A table order is an open tab with table_id. It stays unpaid while the guests drink: send rounds,
+// print a pre-bill (tạm tính) when they ask, then take payment and the table frees itself.
+
+export function tableById(id: string | null | undefined): DiningTable | undefined {
+  return id ? state.config?.tables?.find((t) => t.id === id) : undefined;
+}
+
+/** "Bàn 3 · John", "John" or "" — how an order is named on screen and on paper. */
+export function orderTitle(o: Pick<Order, 'table_id' | 'customer_label'>) {
+  return [tableById(o.table_id)?.name, o.customer_label].filter(Boolean).join(' · ');
+}
+
+/** Open orders (tabs, tables, waiting transfers) per table. */
+export function tableOrders(orders = state.orders) {
+  const m = new Map<string, Order[]>();
+  for (const o of orders) {
+    if (!o.table_id || (o.status !== 'open' && o.status !== 'awaiting_payment')) continue;
+    m.set(o.table_id, [...(m.get(o.table_id) ?? []), o]);
+  }
+  return m;
+}
+
+/** Start a new order on a free table. With keepCart the items already picked go to this table. */
+export async function startTable(tableId: string, guests: number | null, keepCart = false) {
+  const base = keepCart && !state.cart.tabCode ? state.cart : newCart();
+  await saveCart({ ...base, order_type: 'dine_in', table_id: tableId, guests });
+}
+
+function mustNotHaveUnsent(orderId: string) {
+  const c = state.cart;
+  if (c.id === orderId && c.lines.some((l) => l.status === 'active' && !l.sent_at)) {
+    throw new Error('Bàn này đang có món chọn dở trên máy. Gửi món hoặc xoá trước.');
+  }
+}
+
+/** Move an open order to another table (chuyển bàn). */
+export async function moveTable(orderId: string, tableId: string) {
+  const o = state.orders.find((x) => x.id === orderId);
+  if (!o) {
+    // Not saved yet: just change the cart.
+    if (state.cart.id === orderId) await saveCart({ ...state.cart, table_id: tableId, order_type: 'dine_in' });
+    return;
+  }
+  const t = Date.now();
+  const updated: Order = { ...o, table_id: tableId, order_type: 'dine_in', updated_at: t };
+  await audit({ actor_id: state.staff!.id, approver_id: null, action: 'table_move', entity: 'order', entity_id: o.id, before_json: JSON.stringify({ table: tableById(o.table_id)?.name ?? null }), after_json: JSON.stringify({ table: tableById(tableId)?.name }), reason: null });
+  await saveOrder(updated);
+  if (state.cart.id === orderId) await saveCart({ ...state.cart, table_id: tableId, order_type: 'dine_in' });
+}
+
+/** Merge one open order into another (gộp bàn). The source keeps no lines and is closed as merged. */
+export async function mergeOrders(targetId: string, sourceId: string) {
+  const s = getState();
+  const cfg = s.config!;
+  const target = s.orders.find((x) => x.id === targetId && x.status === 'open');
+  const source = s.orders.find((x) => x.id === sourceId && x.status === 'open');
+  if (!target || !source || target.id === source.id) throw new Error('Chỉ gộp được hai bàn/tab đang mở');
+  mustNotHaveUnsent(targetId);
+  mustNotHaveUnsent(sourceId);
+  const t = Date.now();
+  const lines = [...target.lines, ...source.lines.map((l, i) => ({ ...l, sort: target.lines.length + i }))];
+  const totals = computeTotals(lines.map((l) => ({ ...l })), cfg.promotions, cfg.promotionItems, t, cfg.outlet.tz_offset_min);
+  const merged: Order = {
+    ...target, lines, subtotal: totals.subtotal, promo_total: totals.promo_total, discount_total: totals.discount_total, comp_total: totals.comp_total, total: totals.total,
+    adjustments: totals.adjustments, guests: (target.guests || 0) + (source.guests || 0) || null, prebill_at: null, updated_at: t,
+  };
+  const closed: Order = {
+    ...source, status: 'void', merged_into: target.id, void_reason: `Gộp vào ${orderTitle(target) || '#' + target.short_code}`, voided_by: s.staff!.id, approved_by: s.staff!.id, voided_at: t,
+    lines: [], adjustments: [], subtotal: 0, promo_total: 0, discount_total: 0, comp_total: 0, total: 0, updated_at: t,
+  };
+  await audit({ actor_id: s.staff!.id, approver_id: null, action: 'table_merge', entity: 'order', entity_id: target.id, before_json: JSON.stringify({ from: source.short_code, total: source.total }), after_json: JSON.stringify({ into: target.short_code, total: merged.total }), reason: null });
+  await saveOrder(merged); // target first: on the server its lines take over the source's lines
+  await saveOrder(closed);
+  if (state.cart.id === sourceId || state.cart.id === targetId) await openTab(targetId);
+  return merged;
+}
+
+/** Record that the pre-bill was printed. The order stays open and unpaid. */
+export async function markPrebill(orderId: string) {
+  const o = state.orders.find((x) => x.id === orderId && x.status === 'open');
+  if (!o) return;
+  await saveOrder({ ...o, prebill_at: Date.now(), updated_at: Date.now() });
+}
+
+// ---------- time clock (chấm công) ----------
+
+export function openEntry(staffId: string) {
+  return state.timeEntries.filter((e) => e.staff_id === staffId && !e.clock_out).sort((a, b) => b.clock_in - a.clock_in)[0];
+}
+
+async function saveEntry(e: TimeEntry) {
+  const list = [e, ...state.timeEntries.filter((x) => x.id !== e.id)].sort((a, b) => a.clock_in - b.clock_in);
+  await kv.set('timeEntries', list);
+  await outbox.add('time_entry', e);
+  setState({ timeEntries: list });
+  await refreshPending();
+  syncKick();
+}
+
+export async function clockIn(staffId: string) {
+  const cfg = state.config!;
+  const t = Date.now();
+  const e: TimeEntry = {
+    id: ulid(), staff_id: staffId, business_day: businessDay(t, cfg.outlet.tz_offset_min, cfg.outlet.business_day_cutoff), clock_in: t, clock_out: null,
+    break_min: 0, device_id: cfg.device.id, source: 'pos', note: null, created_at: t, updated_at: t,
+  };
+  await saveEntry(e);
+  return e;
+}
+
+export async function clockOut(staffId: string, breakMin = 0) {
+  const e = openEntry(staffId);
+  if (!e) return null;
+  const t = Date.now();
+  const done: TimeEntry = { ...e, clock_out: t, break_min: Math.max(0, Math.min(breakMin, Math.floor((t - e.clock_in) / 60000) - 1)), updated_at: t };
+  await saveEntry(done);
+  return done;
 }

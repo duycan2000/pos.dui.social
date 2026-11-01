@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { computeTotals, cashSuggestions } from '../shared/pricing';
 import type { Order, OrderLine } from '../shared/types';
 import { businessDay, ulid } from '../shared/util';
+import { lateMinutes, nightMinutes, payFor, summarize, weekStart, workedMinutes } from '../shared/timesheet';
 import { crc16, vietQrPayload } from '../shared/vietqr';
 import worker from '../worker/index';
 import { makeD1, makeR2 } from './fakes';
@@ -348,6 +349,176 @@ await test('Bank check while the QR is on screen (Casso format), then admin list
   assert.ok(list.some((t: any) => t.id === 'casso:9001' && t.status === 'claimed'));
 });
 
+
+// ---------- tables (sơ đồ bàn) ----------
+console.log('Tables & time clock');
+const push = (records: any[]) => call('POST', '/api/sync/push', { records });
+const drawer3 = ulid();
+await test('Floor plan: 6 starter tables in the config; bulk add; busy table cannot be deleted', async () => {
+  const cfg0 = (await call('GET', '/api/sync/pull?since=0')).body.config;
+  assert.equal(cfg0.tables.length, 6);
+  assert.deepEqual(cfg0.tables.map((t: any) => t.name).slice(0, 3), ['Bàn 1', 'Bàn 2', 'Bàn 3']);
+  const r = await call('POST', '/api/admin/tables/bulk', { area: 'Sân', prefix: 'S', start: 1, count: 4, seats: 2 });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const san = r.body.filter((t: any) => t.area === 'Sân');
+  assert.equal(san.length, 4);
+  assert.equal(new Set(san.map((t: any) => `${t.x},${t.y}`)).size, 4); // no two tables on the same cell
+  assert.equal((await call('POST', '/api/admin/tables/area', { from: 'Sân', to: 'Sân trước' })).status, 200);
+  const busy = mkOrder({ short_code: 'A-201', table_id: san[0].id, lines: [line(ulid(), itemId, 120000, 1)] });
+  await push([{ type: 'order', data: busy }]);
+  assert.equal((await call('DELETE', `/api/admin/t/dining_table/${san[0].id}`)).status, 409);
+  assert.equal((await call('DELETE', `/api/admin/t/dining_table/${san[1].id}`)).status, 200);
+  const cfg1 = (await call('GET', '/api/sync/pull?since=0')).body.config;
+  assert.equal(cfg1.tables.length, 9);
+  assert.ok(cfg1.tables.every((t: any) => t.area !== 'Sân'));
+  await push([{ type: 'order', data: { ...busy, status: 'void', void_reason: 'test', voided_at: Date.now() } }]);
+});
+await test('Table order stays unpaid: rounds, pre-bill mark, move table; old open tables still pulled', async () => {
+  const t0 = Date.now();
+  await push([{ type: 'drawer_session', data: { id: drawer3, outlet_id: 'x', business_day: day, status: 'open', opened_by: ownerId, opened_at: t0, opening_float: 0, opening_count_json: null, closed_by: null, closed_at: null, counted_json: null, counted_total: null, expected_total: null, difference: null, note: null, device_id: null, created_at: t0, updated_at: t0 } }]);
+  const L1 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };
+  const o = mkOrder({ short_code: 'A-301', table_id: 'TBL01', guests: 3, drawer_session_id: drawer3, lines: [L1], subtotal: 120000, total: 120000 });
+  await push([{ type: 'order', data: o }]);
+  await push([{ type: 'order', data: { ...o, prebill_at: t0 + 1000 } }]);
+  let srv = (await call('GET', '/api/sync/pull?since=0')).body.orders.find((x: any) => x.id === o.id);
+  assert.equal(srv.status, 'open');
+  assert.equal(srv.table_id, 'TBL01');
+  assert.equal(srv.guests, 3);
+  assert.equal(srv.prebill_at, t0 + 1000);
+  await push([{ type: 'order', data: { ...o, table_id: 'TBL02', prebill_at: null } }]);
+  srv = (await call('GET', '/api/sync/pull?since=0')).body.orders.find((x: any) => x.id === o.id);
+  assert.equal(srv.table_id, 'TBL02');
+  assert.equal(srv.prebill_at, null);
+  // An open table from three days ago is still sent to a new device.
+  const old = mkOrder({ short_code: 'A-302', business_day: '2000-01-01', table_id: 'TBL03', lines: [line(ulid(), itemId, 120000, 1)] });
+  await push([{ type: 'order', data: old }]);
+  assert.ok((await call('GET', '/api/sync/pull?since=0')).body.orders.some((x: any) => x.id === old.id));
+  await push([{ type: 'order', data: { ...old, status: 'void', void_reason: 'test', voided_at: Date.now() } }]);
+});
+await test('Merge tables: lines move to the target, BOGO recomputed, merged tab not counted as a void, late rounds refused', async () => {
+  const t0 = Date.now();
+  const A1 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };
+  const B1 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };
+  const a = mkOrder({ short_code: 'A-311', table_id: 'TBL04', guests: 2, drawer_session_id: drawer3, lines: [A1], subtotal: 120000, total: 120000 });
+  const b = mkOrder({ short_code: 'A-312', table_id: 'TBL05', guests: 2, drawer_session_id: drawer3, lines: [B1], subtotal: 120000, total: 120000 });
+  await push([{ type: 'order', data: a }, { type: 'order', data: b }]);
+  // What mergeOrders() on the device sends: the target with both rounds, then the source closed as merged.
+  await push([
+    { type: 'order', data: { ...a, guests: 4, lines: [A1, { ...B1, sort: 1 }], subtotal: 240000, promo_total: 120000, total: 120000 } },
+    { type: 'order', data: { ...b, status: 'void', merged_into: a.id, void_reason: 'Gộp vào Bàn 4', voided_at: t0, lines: [], subtotal: 0, total: 0 } },
+  ]);
+  const orders = (await call('GET', '/api/sync/pull?since=0')).body.orders;
+  const sa = orders.find((x: any) => x.id === a.id);
+  const sb = orders.find((x: any) => x.id === b.id);
+  assert.equal(sa.lines.length, 2);
+  assert.equal(sa.total, 120000); // 1+1 across the two tables' drinks
+  assert.equal(sb.status, 'void');
+  assert.equal(sb.merged_into, a.id);
+  assert.equal(sb.lines.length, 0);
+  const z = (await call('GET', `/api/drawer/${drawer3}/zreport`)).body;
+  assert.equal(z.voids, 0);
+  const late = await push([{ type: 'order', data: { ...b, lines: [B1, { ...line(ulid(), itemId, 120000, 1), sent_at: Date.now() }] } }]);
+  assert.equal(late.body.results[0].ok, false);
+  assert.match(late.body.results[0].error, /gộp/);
+  // Pay the merged table: it leaves the floor.
+  await push([{ type: 'order', data: { ...a, status: 'paid', paid_at: Date.now(), guests: 4, lines: [A1, { ...B1, sort: 1 }], subtotal: 240000, promo_total: 120000, total: 120000,
+    payments: [{ id: ulid(), method: 'cash', amount: 120000, tip: 0, tendered: 120000, change_given: 0, reference: null, status: 'confirmed', confirmed_by: ownerId, confirmed_at: Date.now(), drawer_session_id: drawer3, created_at: Date.now() }] } }]);
+  const after = (await call('GET', `/api/drawer/${drawer3}/zreport`)).body;
+  assert.equal(after.net_sales, 120000);
+  assert.equal(after.open_tabs, 1); // A-301 is still open on Bàn 2
+});
+
+// ---------- time clock ----------
+await test('Timesheet maths: worked, night hours, lateness, pay', () => {
+  const tz = 420;
+  const at = (iso: string) => Date.parse(iso);
+  const e: any = { staff_id: 'S', business_day: '2026-10-30', clock_in: at('2026-10-30T10:20:00Z'), clock_out: at('2026-10-30T18:30:00Z'), break_min: 30 }; // 17:20–01:30 local
+  assert.equal(workedMinutes(e), 460);
+  assert.equal(nightMinutes(e, tz), 210); // 22:00–01:30
+  const plan = [{ id: 'p', staff_id: 'S', day: '2026-10-30', start: '17:00', end: '01:30', note: null }];
+  assert.equal(lateMinutes(e, plan, tz, '05:00', 10), 20);
+  assert.equal(lateMinutes({ ...e, clock_in: at('2026-10-30T10:05:00Z') }, plan, tz, '05:00', 10), 0);
+  assert.equal(payFor(460, 210, 30000, 0), 230000);
+  assert.equal(payFor(460, 210, 30000, 30), 262000); // + 30% on 3.5 night hours = 31.500 → 261.500 → 262.000
+  const sum = summarize([e, { ...e, clock_out: null, clock_in: Date.now() - 20 * 3600000 }], plan, { S: 30000 }, { tz, cutoff: '05:00' });
+  assert.equal(sum.get('S')!.minutes, 460); // the forgotten clock-out is not paid
+  assert.equal(sum.get('S')!.open, 1);
+  assert.equal(sum.get('S')!.scheduled_minutes, 510);
+  assert.equal(weekStart('2026-11-01'), '2026-10-26'); // Sunday → Monday before
+});
+await test('Clock in/out from a device; manager fixes win over stale pushes; deletes stay deleted', async () => {
+  const id = ulid();
+  const tin = Date.now() - 3 * 3600000;
+  const entry = { id, staff_id: ownerId, business_day: day, clock_in: tin, clock_out: null, break_min: 0, device_id: null, source: 'pos', note: null, created_at: tin, updated_at: tin };
+  await push([{ type: 'time_entry', data: entry }]);
+  let pulled = (await call('GET', '/api/sync/pull?since=0')).body;
+  assert.ok(pulled.timeEntries.some((x: any) => x.id === id && !x.clock_out));
+  const tout = Date.now();
+  await push([{ type: 'time_entry', data: { ...entry, clock_out: tout, break_min: 15 } }]);
+  let sheet = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  let row = sheet.entries.find((x: any) => x.id === id);
+  assert.equal(row.clock_out, tout);
+  assert.equal(row.break_min, 15);
+  // Manager correction needs a reason and is audited.
+  assert.equal((await call('PUT', `/api/time/entries/${id}`, { clock_in: tin - 1800000, clock_out: tout })).status, 400);
+  assert.equal((await call('PUT', `/api/time/entries/${id}`, { clock_in: tin - 1800000, clock_out: tout, break_min: 0, reason: 'Quên chấm vào' })).status, 200);
+  await push([{ type: 'time_entry', data: { ...entry, clock_out: tout + 999 } }]); // stale copy from another device
+  sheet = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  row = sheet.entries.find((x: any) => x.id === id);
+  assert.equal(row.clock_in, tin - 1800000);
+  assert.equal(row.clock_out, tout);
+  assert.ok(row.edited_by_name);
+  const audit = (await call('GET', '/api/admin/audit?action=time_edit')).body;
+  assert.ok(JSON.stringify(audit).includes('Quên chấm vào'));
+  // Manual entry and validation.
+  assert.equal((await call('POST', '/api/time/entries', { staff_id: ownerId, clock_in: tout, clock_out: tin, note: 'x' })).status, 400);
+  const man = await call('POST', '/api/time/entries', { staff_id: ownerId, clock_in: tin - 86400000, clock_out: tin - 86400000 + 4 * 3600000, break_min: 0, note: 'Làm sự kiện' });
+  assert.equal(man.status, 201);
+  assert.equal(man.body.source, 'admin');
+  // Delete is soft: a late device push does not bring it back.
+  assert.equal((await call('POST', `/api/time/entries/${id}/delete`, { reason: 'Trùng' })).status, 200);
+  await push([{ type: 'time_entry', data: { ...entry, clock_out: tout } }]);
+  sheet = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  assert.ok(!sheet.entries.some((x: any) => x.id === id));
+  assert.ok(!(await call('GET', '/api/sync/pull?since=0')).body.timeEntries.some((x: any) => x.id === id));
+});
+await test('Pay rates: owner sets and sees them, a manager does not; staff are kept out', async () => {
+  const st = (await call('GET', '/api/admin/staff')).body;
+  const nam = st.find((x: any) => x.name === 'Nam');
+  assert.equal((await call('PUT', `/api/admin/staff/${nam.id}`, { hourly_rate: 28000 })).status, 200);
+  assert.equal((await call('PUT', `/api/admin/staff/${nam.id}`, { hourly_rate: -5 })).status, 400);
+  const sheet = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  assert.equal(sheet.owner, true);
+  assert.equal(sheet.staff.find((x: any) => x.id === nam.id).hourly_rate, 28000);
+  const mgr = await call('POST', '/api/admin/staff', { name: 'Hà', role: 'manager', pin: '246802' });
+  const save = staffSession;
+  staffSession = (await call('POST', '/api/auth/staff', { staffId: mgr.body.id, pin: '246802' })).body.session;
+  const ms = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  assert.equal(ms.owner, false);
+  assert.equal(ms.staff.find((x: any) => x.id === nam.id).hourly_rate, undefined);
+  assert.equal((await call('GET', '/api/admin/staff')).body.find((x: any) => x.id === nam.id).hourly_rate, undefined);
+  staffSession = save;
+  // The till never receives pay rates.
+  const cfgStaff = (await call('GET', '/api/sync/pull?since=0')).body.config.staff;
+  assert.ok(cfgStaff.every((x: any) => !('hourly_rate' in x)));
+});
+await test('Schedule: add, edit, copy last week (refuses to overwrite unless asked), shown to devices', async () => {
+  const mon = weekStart(day);
+  const prev = new Date(Date.parse(mon) - 7 * 86400000).toISOString().slice(0, 10);
+  assert.equal((await call('POST', '/api/time/schedule', { staff_id: ownerId, day: prev, start: '25:00', end: '01:00' })).status, 400);
+  const a = await call('POST', '/api/time/schedule', { staff_id: ownerId, day: prev, start: '17:00', end: '01:30', note: 'Bar' });
+  assert.equal(a.status, 201);
+  assert.equal((await call('PUT', `/api/time/schedule/${a.body.id}`, { staff_id: ownerId, day: prev, start: '18:00', end: '02:00' })).status, 200);
+  await call('POST', '/api/time/schedule', { staff_id: ownerId, day: mon, start: '12:00', end: '16:00' });
+  assert.equal((await call('POST', '/api/time/schedule/copy', { from: prev, to: mon })).status, 409);
+  const c = await call('POST', '/api/time/schedule/copy', { from: prev, to: mon, replace: true });
+  assert.equal(c.body.copied, 1);
+  const sched = (await call('GET', '/api/sync/pull?since=0')).body.schedule;
+  const mine = sched.filter((x: any) => x.day === mon);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].start, '18:00');
+});
+
 await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe that keeps real data', async () => {
   const realBefore = (env.DB.raw.prepare("SELECT COUNT(*) n FROM sale_order WHERE id NOT LIKE 'DEMO%'").get() as any).n;
   const st = (await call('GET', '/api/admin/demo')).body;
@@ -368,8 +539,10 @@ await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe t
   assert.equal(neg, 0, 'demo stock went negative');
   const cost = (await call('GET', '/api/inv/costing')).body;
   assert.ok(cost.items.filter((i: any) => i.has_recipe).length >= 17);
+  const ts = (await call('GET', `/api/time/sheet?from=${from}&to=${to}`)).body;
+  assert.ok(ts.entries.filter((e: any) => e.id.startsWith('DEMO')).length >= 50 && ts.schedule.length >= 50);
   assert.equal((await call('POST', '/api/admin/demo/clear')).status, 200);
-  for (const t of ['sale_order', 'order_line', 'item', 'ingredient', 'staff', 'ledger_entry', 'drawer_session', 'stock_movement', 'recipe_line']) {
+  for (const t of ['sale_order', 'order_line', 'item', 'ingredient', 'staff', 'ledger_entry', 'drawer_session', 'stock_movement', 'recipe_line', 'time_entry', 'work_schedule']) {
     const left = (env.DB.raw.prepare(`SELECT COUNT(*) n FROM ${t} WHERE ${t === 'order_line' ? 'order_id' : 'id'} LIKE 'DEMO%'`).get() as any).n;
     assert.equal(left, 0, t);
   }

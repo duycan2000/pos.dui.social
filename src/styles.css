@@ -350,3 +350,63 @@ table.t tbody tr:hover td { background: var(--surface-2); }
   .admin-side, .topbar, .page-actions, .chips { display: none !important; }
   body { background: #fff; color: #000; }
 }
+
+/* ---------- floor plan (sơ đồ bàn) ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 16px 12px; font-size: 12px; color: var(--muted); }
+.legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; border: 1px dashed var(--border-2); }
+.legend .busy i { background: var(--accent); border: 0; }
+.legend .bill i { background: var(--info); border: 0; }
+.legend .transfer i { background: var(--violet); border: 0; }
+.floorwrap { overflow-x: auto; padding-bottom: 8px; }
+.floor { display: grid; gap: 10px; min-width: min-content; padding: 14px; border-radius: var(--r-l); background:
+  radial-gradient(circle, var(--surface-2) 1px, transparent 1.5px) 0 0 / 22px 22px, var(--panel); border: 1px solid var(--border); }
+.tbl { flex: 1; width: 100%; min-height: 76px; border-radius: 14px; border: 1.5px dashed var(--border-2); background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px; text-align: center; transition: transform 0.1s, background 0.15s; }
+.tbl:active { transform: scale(0.97); }
+.tbl.round { border-radius: 999px; }
+.tbl.bar { border-radius: 8px; }
+.tbl .tn { font-weight: 800; font-size: 15px; line-height: 1.15; }
+.tbl .tt { font-weight: 700; font-size: 14px; }
+.tbl .tm { opacity: 0.85; }
+.tbl.busy { border: 0; background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px rgba(245, 165, 36, 0.18); }
+.tbl.busy .muted, .tbl.bill .muted { color: inherit; opacity: 0.75; }
+.tbl.bill { border: 0; background: var(--info); color: #06121f; }
+.tbl.transfer { border: 0; background: var(--violet); color: #140b2b; }
+.tbl.sel { outline: 3px solid var(--text); outline-offset: 2px; }
+.tbl:disabled { opacity: 0.3; }
+.tablelist { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.tablelist .tbl { min-height: 92px; }
+.pickgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 8px; }
+.pickgrid .tbl { min-height: 64px; }
+.tableacts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stepper.sm button { width: 38px; height: 38px; }
+.stepper.sm span { font-size: 14px; min-width: 72px; }
+.danger-text { color: var(--danger); }
+.li.on { background: var(--accent-soft); }
+
+/* floor editor */
+.editor { display: grid; gap: 6px; padding: 10px; border-radius: var(--r-l); background: var(--panel); border: 1px solid var(--border); touch-action: none; user-select: none; position: relative; }
+.editor .cell { border: 1px dashed var(--border); border-radius: 10px; min-height: 64px; background: transparent; color: var(--faint); font-size: 20px; }
+.editor .cell:hover { border-color: var(--accent); color: var(--accent); }
+.editor .tbl { border-style: solid; border-color: var(--border-2); background: var(--surface-2); cursor: grab; position: relative; z-index: 1; }
+.editor .tbl.drag { opacity: 0.85; cursor: grabbing; z-index: 5; box-shadow: var(--shadow); }
+.editor .tbl.drop { outline: 2px solid var(--accent); }
+
+/* timesheet */
+.sheet-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sheet-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sheet-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.sheet-table tr.click { cursor: pointer; }
+.sheet-table tr.click:hover td { background: var(--surface); }
+.sheet-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-m); background: var(--panel); }
+.week { display: grid; grid-template-columns: 120px repeat(7, minmax(92px, 1fr)); min-width: 780px; }
+.week > div { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 6px; min-height: 56px; }
+.week .hd { font-size: 12px; color: var(--muted); font-weight: 700; min-height: 0; padding: 8px 6px; }
+.week .hd.today { color: var(--accent); }
+.week .nm { font-weight: 700; font-size: 13px; display: flex; flex-direction: column; justify-content: center; }
+.week .slot { display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.week .slot:hover { background: var(--surface); }
+.week .shift { font-size: 12px; font-weight: 700; padding: 4px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.week .add { font-size: 18px; color: var(--faint); text-align: center; margin: auto; }
