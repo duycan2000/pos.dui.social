@@ -291,6 +291,39 @@ export async function removeLine(id: string): Promise<boolean> {
   return true;
 }
 
+/** +1 on a ticket line. A line already sent to the bar never changes: the extra drink becomes a new round line. */
+export async function plusOne(id: string) {
+  const l = state.cart.lines.find((x) => x.id === id);
+  if (!l || l.status !== 'active') return;
+  if (!l.sent_at && !l.comp) { await updateLine(id, { qty: l.qty + 1 }); return; }
+  const item = state.config?.items.find((i) => i.id === l.item_id);
+  if (item) await addToCart(item, l.modifiers, 1, l.note);
+}
+
+/**
+ * −1 on a ticket line. Not sent yet: just fewer (0 removes it). Already sent to the bar: needs a manager and a
+ * reason, and one unit is kept as a removed line so the audit trail shows exactly what was taken off.
+ */
+export async function minusOne(id: string): Promise<boolean> {
+  const l = state.cart.lines.find((x) => x.id === id);
+  if (!l || l.status !== 'active') return false;
+  if (!l.sent_at) { await updateLine(id, { qty: l.qty - 1 }); return true; }
+  if (l.qty <= 1) return removeLine(id);
+  const r = await requestApproval({ title: `Bỏ 1 ly đã gửi: ${l.item_name}`, reasonRequired: true, reasons: ['Bấm nhầm', 'Khách đổi ý', 'Pha sai', 'Hết nguyên liệu'] });
+  if (!r) return false;
+  const removed: OrderLine = { ...l, id: ulid(), qty: 1, line_total: l.unit_price, status: 'removed', removed_by: state.staff!.id, removed_reason: r.reason, sort: state.cart.lines.length };
+  const lines = [...state.cart.lines.map((x) => (x.id === id ? { ...x, qty: x.qty - 1, line_total: x.unit_price * (x.qty - 1) } : x)), removed];
+  await saveCart({ ...state.cart, lines });
+  await audit({ actor_id: state.staff!.id, approver_id: r.approver.id, action: 'line_remove', entity: 'order', entity_id: state.cart.id, before_json: JSON.stringify({ item: l.item_name, qty: l.qty }), after_json: JSON.stringify({ qty: l.qty - 1 }), reason: r.reason });
+  return true;
+}
+
+/** −1 from the menu tile: undo the latest tap on that item (only lines not sent yet). */
+export async function minusItem(itemId: string) {
+  const l = [...state.cart.lines].reverse().find((x) => x.item_id === itemId && x.status === 'active' && !x.sent_at && !x.comp);
+  if (l) await updateLine(l.id, { qty: l.qty - 1 });
+}
+
 export const COMP_REASONS = ['Khách quen', 'Bạn chủ quán', 'Nhân viên', 'Xin lỗi khách', 'Khuyến mãi riêng'];
 
 /** Ly mời: free for the guest, still deducted from stock. Needs a manager and a reason. */

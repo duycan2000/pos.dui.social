@@ -13,7 +13,7 @@ const TABLES: Record<string, TableDef> = {
   modifier_option: { cols: ['group_id', 'name_en', 'name_vi', 'price_delta', 'is_default', 'excludes_promo', 'sort', 'active'], roles: ['owner', 'manager'], order: 'sort', soft: true },
   promotion: { cols: ['name', 'type', 'active', 'start_date', 'end_date', 'days_of_week', 'time_from', 'time_to', 'rule_json'], roles: ['owner'], order: 'name', soft: true },
   supplier: { cols: ['name', 'phone', 'note', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
-  dining_table: { cols: ['area', 'name', 'seats', 'x', 'y', 'w', 'h', 'shape', 'sort', 'active'], roles: ['owner', 'manager'], order: 'area, sort, name', soft: true },
+  dining_table: { cols: ['area', 'name', 'seats', 'x', 'y', 'w', 'h', 'shape', 'sort', 'active'], roles: ['owner'], order: 'area, sort, name', soft: true },
   ingredient: { cols: ['name', 'kind', 'base_unit', 'purchase_unit', 'base_per_purchase', 'yield_pct', 'avg_cost_per_base', 'min_stock_base', 'recipe_yield_base', 'default_supplier_id', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
 };
 
@@ -358,7 +358,7 @@ export async function publicMenu(c: Ctx) {
 
 /** Add several tables at once ("Bàn 7" … "Bàn 12"), placed on free cells of the area's grid. */
 export async function bulkTables(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requireRole(c, 'owner');
   const b = await body<{ area?: string; prefix?: string; start?: number; count?: number; seats?: number }>(c);
   const area = (b.area || '').trim() || 'Trong nhà';
   const count = Math.round(b.count || 0);
@@ -388,7 +388,7 @@ export async function bulkTables(c: Ctx) {
 }
 
 export async function renameArea(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requireRole(c, 'owner');
   const b = await body<{ from?: string; to?: string }>(c);
   need(b.from && b.to?.trim(), 400, 'Thiếu tên khu vực');
   await batch(c.env, [stmt(c.env, 'UPDATE dining_table SET area=?, updated_at=? WHERE area=?', b.to!.trim(), now(), b.from)]);

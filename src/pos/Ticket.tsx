@@ -5,7 +5,7 @@ import type { OrderLine } from '../../shared/types';
 import { vnd } from '../../shared/util';
 import { preBillDoc, tryPrint } from '../lib/receipts';
 import {
-  cartAsOrder, cartCount, cartTotals, clearCart, compLine, getState, markPrebill, navigate, optionLabel, peekShortCode, removeLine, requestApproval, saveToTab,
+  cartAsOrder, cartCount, cartTotals, clearCart, compLine, getState, markPrebill, minusOne, navigate, plusOne, optionLabel, peekShortCode, removeLine, requestApproval, saveToTab,
   setCartMeta, staffName, tableById, toast, updateLine, useStore, voidOrder,
 } from '../lib/store';
 import { Confirm, Icon, Segmented, Sheet } from '../ui';
@@ -135,10 +135,18 @@ function promoOf(t: ReturnType<typeof cartTotals>, lineId: string) {
 function Line({ l, promo, onTap }: { l: OrderLine; promo: number; onTap: () => void }) {
   const opts = optionLabel(l.modifiers);
   const removed = l.status === 'removed';
+  const stop = (fn: () => void) => (e: { stopPropagation: () => void }) => { e.stopPropagation(); fn(); };
   return (
     <div className={'tline' + (removed ? ' removed' : '')} onClick={onTap} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onTap()}>
-      <span className="nm"><span className="q">{l.qty}×</span>{l.item_name}</span>
-      <span className="mono semibold">{l.comp ? <span style={{ color: 'var(--violet)' }}>Mời</span> : vnd(l.unit_price * l.qty, false)}</span>
+      {removed ? <span className="q-static">{l.qty}×</span> : (
+        <span className="qstep" onClick={(e) => e.stopPropagation()}>
+          <button aria-label={`Bớt 1 ${l.item_name}`} onClick={stop(() => minusOne(l.id))}><Icon name={l.qty === 1 && !l.sent_at ? 'trash' : 'minus'} size={16} /></button>
+          <span className="mono">{l.qty}</span>
+          <button aria-label={`Thêm 1 ${l.item_name}`} onClick={stop(() => plusOne(l.id))}><Icon name="plus" size={16} /></button>
+        </span>
+      )}
+      <span className="nm">{l.item_name}{l.sent_at && !removed ? <span className="sent" title="Đã gửi quầy bar"> ✓</span> : null}</span>
+      <span className="mono semibold amt">{l.comp ? <span style={{ color: 'var(--violet)' }}>Mời</span> : vnd(l.unit_price * l.qty, false)}</span>
       {(opts || l.note || promo > 0 || l.comp || removed) && (
         <span className="meta small muted">
           {opts && <span>{opts}</span>}

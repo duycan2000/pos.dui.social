@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChosenOption, Item } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
-import { addToCart, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
+import { addToCart, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
 import { appVersion, CAT_COLORS, Icon, Sheet } from '../ui';
 import Ticket from './Ticket';
 
@@ -107,7 +107,7 @@ export default function OrderScreen() {
           <div className="grid">
             {items.map((it) => (
               <Tile key={it.id} item={it} color={catColor.get(it.category_id) ?? CAT_COLORS[0]} bogo={promoItems.has(it.id)} qty={inCart.get(it.id) || 0}
-                onTap={() => quickAdd(it)} onLong={() => !it.sold_out && setModItem(it)} />
+                onTap={() => quickAdd(it)} onLong={() => !it.sold_out && setModItem(it)} onMinus={() => { minusItem(it.id); navigator.vibrate?.(8); }} />
             ))}
           </div>
         </div>
@@ -128,7 +128,7 @@ export default function OrderScreen() {
   );
 }
 
-function Tile({ item, color, bogo, qty, onTap, onLong }: { item: Item; color: string; bogo: boolean; qty: number; onTap: () => void; onLong: () => void }) {
+function Tile({ item, color, bogo, qty, onTap, onLong, onMinus }: { item: Item; color: string; bogo: boolean; qty: number; onTap: () => void; onLong: () => void; onMinus: () => void }) {
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const long = useRef(false);
   const start = () => { long.current = false; timer.current = setTimeout(() => { long.current = true; onLong(); }, 450); };
@@ -143,16 +143,19 @@ function Tile({ item, color, bogo, qty, onTap, onLong }: { item: Item; color: st
     );
   }
   return (
+    <div className="tilewrap">
     <button className={'tile' + (qty ? ' in' : '')} style={style} onPointerDown={start} onPointerUp={end} onPointerLeave={end} onPointerCancel={end}
       onClick={() => { if (!long.current) onTap(); }} onContextMenu={(e) => e.preventDefault()} aria-label={`${item.name_vi}, ${vnd(item.price)}${qty ? `, đã chọn ${qty}` : ''}`}>
       {item.image_key && <span className="photo" style={{ backgroundImage: `url(${mediaUrl(item.image_key)})` }} />}
-      {qty > 0 && <span className="qty">{qty}</span>}
-      <span className="name" style={{ paddingRight: qty ? 30 : 0 }}>{item.name_vi}</span>
+      <span className="name" style={{ paddingRight: qty ? 54 : 0 }}>{item.name_vi}</span>
       <span className="row between" style={{ width: '100%' }}>
         <span className="price">{vndShort(item.price)}</span>
         {bogo && <span className="badge">1+1</span>}
       </span>
     </button>
+    {/* Tap the tile = +1, tap this pill = −1 (undo a double tap). */}
+    {qty > 0 && <button className="tile-minus" aria-label={`Bớt 1 ${item.name_vi}, đang có ${qty}`} onClick={onMinus}><Icon name="minus" size={16} />{qty}</button>}
+    </div>
   );
 }
 

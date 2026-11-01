@@ -2,6 +2,11 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.10.0 — 01/11/2026
+- Nút −1 trên ô món (bấm ô = +1, bấm viên "− 2" ở góc = bớt 1) để sửa khi lỡ bấm 2 lần.
+- Trong đơn (giỏ / tab / bàn) mỗi món có − số lượng +. Món chưa gửi: bớt/thêm ngay (về 0 thì xoá). Món đã gửi quầy bar: + tạo lượt mới, − cần quản lý duyệt + lý do và ghi nhật ký.
+- Sơ đồ bàn: chủ quán có nút + để thêm bàn ngay tại chỗ (tên, khu vực, số ghế). Chỉ chủ quán được thêm/sửa/xoá bàn (kể cả trong Quản trị).
+
 ## 0.9.0 — 01/11/2026
 - Chủ quán và quản lý có tài khoản đăng nhập (email hoặc tên) + mật khẩu. Máy lạ chỉ thấy trang đăng nhập (không hiện tên nhân viên hay dữ liệu quán) và phải đăng nhập bằng tài khoản này; PIN không còn đủ để thêm máy mới. Máy đã đăng nhập vẫn chọn tên + PIN như cũ.
 - Quán đang dùng từ trước: vẫn đăng ký máy bằng PIN quản lý cho tới khi chủ quán đặt mật khẩu (Quản trị › Nhân viên › tên mình). Trang Quản trị hiện nhắc nếu chưa đặt.

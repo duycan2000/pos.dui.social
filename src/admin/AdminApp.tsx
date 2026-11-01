@@ -27,7 +27,7 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', 'tag', ['owner', 'manager']],
     ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', ['owner', 'manager']],
     ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', ['owner']],
-    ['admin/tables', 'Sơ đồ bàn', 'Khu vực, bàn, số ghế', 'table', ['owner', 'manager']],
+    ['admin/tables', 'Sơ đồ bàn', 'Thêm bàn, khu vực, số ghế', 'table', ['owner']],
   ] },
   { group: 'Kho', items: [
     ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', ['owner', 'manager']],

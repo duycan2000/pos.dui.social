@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DiningTable, Order } from '../../shared/types';
 import { hhmm, vnd, vndShort } from '../../shared/util';
+import { post } from '../lib/api';
 import { preBillDoc, tryPrint } from '../lib/receipts';
 import {
-  cartCount, cartTotals, getState, isManager, markPrebill, mergeOrders, moveTable, navigate, openTab, optionLabel,
+  cartCount, cartTotals, getManagerSession, getState, markPrebill, mergeOrders, moveTable, navigate, openTab, optionLabel,
   requestApproval, staffName, startTable, tableOrders, toast, useStore, voidOrder,
 } from '../lib/store';
 import { runSync } from '../lib/sync';
@@ -51,6 +52,10 @@ export default function Tables() {
   const counts = { free: 0, busy: 0, bill: 0, transfer: 0 } as Record<Status, number>;
   for (const t of tables) counts[statusOf(byTable.get(t.id))]++;
   const busyCount = tables.length - counts.free;
+  const owner = staff.role === 'owner';
+  const [adding, setAdding] = useState(false);
+  const addBtn = owner ? <button className="iconbtn" aria-label="Thêm bàn" onClick={() => setAdding(true)}><Icon name="plus" /></button> : null;
+  const addSheet = adding ? <AddTable area={current || 'Trong nhà'} onClose={() => setAdding(false)} onAdded={(a) => { setAdding(false); setArea(a); }} /> : null;
 
   if (!tables.length) {
     return (
@@ -58,8 +63,9 @@ export default function Tables() {
         <TopBar title="Sơ đồ bàn" onBack={() => navigate('order')} />
         <div className="pad">
           <Empty icon="table">Chưa có bàn nào</Empty>
-          {isManager(staff) && <button className="btn primary block" onClick={() => navigate('admin/tables')}>Thiết lập sơ đồ bàn</button>}
+          {owner ? <button className="btn primary block" onClick={() => setAdding(true)}>+ Thêm bàn</button> : <p className="small muted" style={{ textAlign: 'center' }}>Chủ quán thêm bàn ở đây.</p>}
         </div>
+        {addSheet}
       </div>
     );
   }
@@ -68,6 +74,7 @@ export default function Tables() {
     <div className="screen wide">
       <TopBar title="Sơ đồ bàn" sub={`${busyCount}/${tables.length} bàn có khách`} onBack={() => navigate('order')}
         right={<>
+          {addBtn}
           <button className="iconbtn" aria-label={view === 'map' ? 'Xem dạng danh sách' : 'Xem dạng sơ đồ'} onClick={() => setView(view === 'map' ? 'list' : 'map')}><Icon name={view === 'map' ? 'list' : 'grid'} /></button>
           <button className="iconbtn" aria-label="Làm mới" onClick={() => runSync()}><Icon name="sync" /></button>
         </>} />
@@ -92,6 +99,7 @@ export default function Tables() {
       <div className="ticketbar">
         <button className="btn lg grow" onClick={() => { navigate('order'); }}><Icon name="receipt" size={20} />Mang đi / không bàn</button>
       </div>
+      {addSheet}
       {pick && (byTable.get(pick.id)?.length
         ? <BusyTableSheet table={pick} orders={byTable.get(pick.id)!} onClose={() => setPick(null)} />
         : <FreeTableSheet table={pick} onClose={() => setPick(null)} />)}
@@ -335,6 +343,63 @@ export function TablePicker({ mode, from, order, onClose, onDone }: { mode: 'mov
         <Confirm title={`Gộp với ${confirm.name}?`} text={`${confirm.name} đang có khách (#${byTable.get(confirm.id)![0].short_code}). Món của hai bàn gộp thành một bill.`}
           okText="Gộp bàn" onCancel={() => setConfirm(null)} onOk={doMerge} />
       )}
+    </Sheet>
+  );
+}
+
+/** Owner only: add a table straight from the floor plan. It goes on the next free spot; drag it in Quản trị › Sơ đồ bàn. */
+function AddTable({ area, onClose, onAdded }: { area: string; onClose: () => void; onAdded: (area: string) => void }) {
+  const cfg = useStore((s) => s.config)!;
+  const online = useStore((s) => s.net.online);
+  const tables = cfg.tables ?? [];
+  const areas = [...new Set(tables.map((t) => t.area))];
+  const nums = tables.map((t) => parseInt(t.name.replace(/\D+/g, ''), 10)).filter((n) => !isNaN(n));
+  const [name, setName] = useState(`Bàn ${(nums.length ? Math.max(...nums) : 0) + 1}`);
+  const [where, setWhere] = useState(areas.includes(area) ? area : areas[0] ?? 'Trong nhà');
+  const [newArea, setNewArea] = useState('');
+  const [seats, setSeats] = useState(4);
+  const [busy, setBusy] = useState(false);
+  const target = (where === '__new' ? newArea : where).trim();
+  const save = async () => {
+    setBusy(true);
+    try {
+      const session = await getManagerSession('Thêm bàn — nhập PIN chủ quán');
+      if (!session) return;
+      // Next free cell, leaving a gap between tables like the starter layout.
+      const used = new Set<string>();
+      for (const t of tables.filter((t) => t.area === target)) for (let i = 0; i < t.w; i++) for (let j = 0; j < t.h; j++) used.add(`${t.x + i},${t.y + j}`);
+      let cell = 0;
+      while (used.has(`${(cell % 3) * 2},${Math.floor(cell / 3) * 2}`)) cell++;
+      await post('/api/admin/t/dining_table', { area: target, name: name.trim(), seats, x: (cell % 3) * 2, y: Math.floor(cell / 3) * 2, w: 1, h: 1, shape: 'square', sort: tables.length + 1, active: 1 });
+      await runSync();
+      toast(`Đã thêm ${name.trim()}`);
+      onAdded(target);
+    } catch (e) { toast((e as Error).message, true); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet middle onClose={onClose}>
+      <h2>Thêm bàn</h2>
+      <div className="col gap12 mt16">
+        <label className="field"><span>Tên bàn</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Bàn 7, Sofa, Quầy 3" /></label>
+        <div className="field"><span>Khu vực</span>
+          <div className="row wrap" style={{ gap: 8 }}>
+            {areas.map((a) => <button key={a} className={'opt' + (where === a ? ' on' : '')} onClick={() => setWhere(a)}>{a}</button>)}
+            <button className={'opt' + (where === '__new' ? ' on' : '')} onClick={() => setWhere('__new')}>+ Khu mới</button>
+          </div>
+        </div>
+        {where === '__new' && <input className="input" autoFocus value={newArea} onChange={(e) => setNewArea(e.target.value)} placeholder="VD: Sân trước, Tầng 2" />}
+        <div className="row between">
+          <span className="muted">Số ghế</span>
+          <div className="stepper">
+            <button aria-label="Bớt ghế" onClick={() => setSeats(Math.max(1, seats - 1))}><Icon name="minus" /></button>
+            <span className="mono">{seats}</span>
+            <button aria-label="Thêm ghế" onClick={() => setSeats(seats + 1)}><Icon name="plus" /></button>
+          </div>
+        </div>
+        {!online && <div className="banner danger">Thêm bàn cần có mạng.</div>}
+        <button className="btn primary lg" disabled={busy || !online || !name.trim() || !target} onClick={save}>{busy ? 'Đang thêm…' : 'Thêm bàn'}</button>
+        <button className="btn ghost" onClick={() => navigate('admin/tables')}>Sắp xếp sơ đồ, đổi tên, xoá bàn…</button>
+      </div>
     </Sheet>
   );
 }

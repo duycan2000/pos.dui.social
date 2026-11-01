@@ -410,3 +410,20 @@ table.t tbody tr:hover td { background: var(--surface-2); }
 .week .slot:hover { background: var(--surface); }
 .week .shift { font-size: 12px; font-weight: 700; padding: 4px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
 .week .add { font-size: 18px; color: var(--faint); text-align: center; margin: auto; }
+
+/* ticket line with −/+ (v0.10) */
+.tline { grid-template-columns: auto 1fr auto; align-items: center; }
+.tline .meta { grid-column: 2 / -1; }
+.tline .nm { min-width: 0; }
+.tline .sent { color: var(--ok); font-size: 12px; }
+.tline .q-static { color: var(--faint); font-weight: 700; min-width: 40px; }
+.qstep { display: inline-flex; align-items: center; border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.qstep button { width: 34px; height: 34px; border: 0; background: var(--surface-2); color: var(--text); display: flex; align-items: center; justify-content: center; }
+.qstep button:active { background: var(--surface-3); }
+.qstep span { min-width: 26px; text-align: center; font-weight: 800; color: var(--accent); }
+/* −1 on a menu tile */
+.tilewrap { position: relative; display: flex; }
+.tilewrap > .tile { flex: 1; width: 100%; }
+.tile-minus { position: absolute; top: 8px; right: 8px; z-index: 2; height: 30px; border-radius: 15px; border: 0; background: var(--accent); color: var(--accent-ink);
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 10px 0 6px; font-weight: 800; font-size: 14px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.tile-minus:active { transform: scale(0.94); }

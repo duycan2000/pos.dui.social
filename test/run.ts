@@ -585,6 +585,8 @@ await test('Owner deletes staff: no history → removed; with history → archiv
   const save = staffSession;
   staffSession = (await call('POST', '/api/auth/staff', { staffId: mgr.id, pin: '246802' })).body.session;
   assert.equal((await call('DELETE', `/api/admin/staff/${ownerId}`)).status, 403);
+  assert.equal((await call('POST', '/api/admin/t/dining_table', { area: 'Trong nhà', name: 'Bàn 99' })).status, 403); // only the owner adds tables
+  assert.equal((await call('POST', '/api/admin/tables/bulk', { count: 2 })).status, 403);
   staffSession = save;
 });
 await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe that keeps real data', async () => {
