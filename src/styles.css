@@ -638,3 +638,6 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 @keyframes pugHop { from { transform: translateY(0); } to { transform: translateY(-10px); } }
 @media (min-width: 980px) { .pug-host { bottom: 24px; right: 24px; } }
 @media (prefers-reduced-motion: reduce) { .pug-host, .pug-host.leaving { animation: none !important; } .pug-host.leaving { opacity: 0; } }
+
+.printer-banner { width: 100%; border: 0; align-items: center; }
+.printer-banner:empty { display: none; }

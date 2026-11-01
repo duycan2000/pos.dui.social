@@ -1,7 +1,7 @@
 // Printer setup on this phone: connection type, paper width, automatic printing, test print.
 import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
-import { bleSupported, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, renderDoc, savePrinter } from '../lib/printer';
+import { bleSupported, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, printerSettings, reconnectWithTap, renderDoc, savePrinter, usePrinterLink } from '../lib/printer';
 import { preBillDoc, qrBillDoc, receiptDoc } from '../lib/receipts';
 import { navigate, toast, useStore } from '../lib/store';
 import { Icon, Segmented, Sheet, TopBar } from '../ui';
@@ -15,7 +15,7 @@ export default function PrinterSettings() {
   const update = async (patch: Partial<P>) => { const next = { ...p, ...patch }; setP(next); await savePrinter(next); };
   const pair = async () => {
     setBusy(true);
-    try { const name = await pairBle(); await update({ mode: 'ble', deviceName: name }); toast(`Đã kết nối ${name}`); }
+    try { const name = await pairBle(); setP({ ...printerSettings() }); toast(`Đã kết nối ${name} — lần sau app tự kết nối lại`); }
     catch (e) { const m = (e as Error).message; if (!/cancel/i.test(m)) toast(m, true); }
     finally { setBusy(false); }
   };
@@ -71,6 +71,7 @@ export default function PrinterSettings() {
               <div className="col grow" style={{ gap: 2 }}><b>{p.deviceName || 'Chưa chọn máy in'}</b><span className="small muted">In trực tiếp từ Chrome, cho máy in hỗ trợ BLE</span></div>
             </div>
             {!bleSupported() && <div className="banner danger">Trình duyệt này không hỗ trợ Bluetooth. Dùng Chrome trên Android hoặc chọn “Qua app RawBT”.</div>}
+            <PrinterLinkRow />
             <button className="btn primary" disabled={busy || !bleSupported()} onClick={pair}><Icon name="bluetooth" size={20} />{p.deviceName ? 'Chọn lại máy in' : 'Tìm và kết nối máy in'}</button>
             <p className="tiny faint" style={{ margin: 0 }}>Bật máy in, để gần điện thoại. Nếu máy in không hiện hoặc kết nối báo lỗi, máy in có thể chỉ có Bluetooth thường — chọn “Qua app RawBT”. Sau khi mở lại app, lần in đầu có thể cần bấm kết nối lại.</p>
           </div>
@@ -113,6 +114,24 @@ export default function PrinterSettings() {
           <Segmented value={preview.kind} onChange={(v) => showPreview(v)} options={[['bill', 'Bill tạm tính'], ['qr', 'Bill có QR'], ['receipt', 'Hoá đơn đã trả']]} />
           <div className="mt16" style={{ background: '#fff', padding: 12, borderRadius: 12, display: 'flex', justifyContent: 'center' }}><img src={preview.url} alt="Bill mẫu" style={{ width: '100%', maxWidth: 320, imageRendering: 'pixelated' }} /></div>
         </Sheet>
+      )}
+    </div>
+  );
+}
+
+function PrinterLinkRow() {
+  const l = usePrinterLink();
+  const [busy, setBusy] = useState(false);
+  const label = { off: '', connected: 'Đang kết nối', connecting: 'Đang tìm máy in…', disconnected: 'Chưa kết nối' }[l];
+  if (!printerSettings().deviceName) return null;
+  return (
+    <div className="row between">
+      <span className="small row"><span className={'dot' + (l === 'connected' ? '' : l === 'connecting' ? ' busy' : ' off')} />{label}</span>
+      {l !== 'connected' && (
+        <button className="btn sm" disabled={busy || l === 'connecting'} onClick={async () => {
+          setBusy(true);
+          try { toast(`Đã kết nối ${await reconnectWithTap()}`); } catch (e) { const m = (e as Error).message; if (!/cancel/i.test(m)) toast(m, true); } finally { setBusy(false); }
+        }}>Kết nối lại</button>
       )}
     </div>
   );

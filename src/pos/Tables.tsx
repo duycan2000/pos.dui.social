@@ -10,7 +10,7 @@ import {
   requestApproval, staffName, startTable, tableOrders, toast, useStore, voidOrder,
 } from '../lib/store';
 import { runSync } from '../lib/sync';
-import { Confirm, Empty, Icon, Segmented, Sheet, TopBar } from '../ui';
+import { Confirm, Empty, Icon, PrinterBanner, Segmented, Sheet, TopBar } from '../ui';
 
 type Status = 'free' | 'busy' | 'bill' | 'transfer';
 const STATUS_LABEL: Record<Status, string> = { free: 'Trống', busy: 'Có khách', bill: 'Đã in tạm tính', transfer: 'Chờ chuyển khoản' };
@@ -86,6 +86,7 @@ export default function Tables() {
           })}
         </nav>
       )}
+      <div style={{ padding: '0 16px' }}><PrinterBanner /></div>
       <div className="legend" aria-label="Chú thích">
         {(['free', 'busy', 'bill', 'transfer'] as Status[]).map((s) => <span key={s} className={'lg ' + s}><i />{STATUS_LABEL[s]} · {counts[s]}</span>)}
       </div>

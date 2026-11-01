@@ -7,6 +7,7 @@
 //
 // Receipts are rendered to an image and sent as ESC/POS raster (GS v 0), so Vietnamese diacritics
 // print correctly on any printer — no code page needed.
+import { useSyncExternalStore } from 'react';
 import { kv } from './db';
 
 export interface PrinterSettings {
@@ -18,6 +19,8 @@ export interface PrinterSettings {
   openDrawer: boolean;    // kick the cash drawer on cash payments (printer must have an RJ11 port)
   copies: number;
   deviceName?: string;
+  /** Web Bluetooth device id of the paired printer (stable per site while the permission is kept). */
+  deviceId?: string;
   /** Smaller chunks and pauses, for mini/portable printers with a small buffer (e.g. DM01). */
   slow?: boolean;
 }
@@ -71,26 +74,121 @@ async function findWritable(server: any): Promise<any> {
   throw new Error('Không tìm thấy cổng in trên thiết bị này. Máy in có thể chỉ hỗ trợ Bluetooth thường — hãy chọn kiểu RawBT.');
 }
 
+// ---- connection status, shown on the selling screen ----
+export type PrinterLink = 'off' | 'connected' | 'connecting' | 'disconnected';
+let link: PrinterLink = 'off';
+const linkListeners = new Set<() => void>();
+function setLink(l: PrinterLink) { if (l !== link) { link = l; linkListeners.forEach((f) => f()); } }
+export function printerLink(): PrinterLink { return settings.mode === 'ble' ? link : 'off'; }
+export function onPrinterLink(f: () => void) { linkListeners.add(f); return () => { linkListeners.delete(f); }; }
+
+function attach(d: any) {
+  device = d;
+  d.addEventListener?.('gattserverdisconnected', () => {
+    characteristic = null;
+    setLink('disconnected');
+    // Printer switched off or out of range: try again quietly a few times.
+    scheduleReconnect();
+  });
+}
+
+async function connectGatt(d: any, ms = 8000): Promise<void> {
+  const server = await Promise.race([
+    d.gatt.connect(),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('Máy in không phản hồi. Kiểm tra máy in đã bật và ở gần.')), ms)),
+  ]);
+  characteristic = await findWritable(server);
+  setLink('connected');
+}
+
 /** Pair with a printer (must be called from a tap). */
 export async function pairBle(): Promise<string> {
   if (!bleSupported()) throw new Error('Trình duyệt này không hỗ trợ Bluetooth. Dùng Chrome trên Android, hoặc chọn kiểu RawBT.');
-  device = await (navigator as any).bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICES });
-  device.addEventListener('gattserverdisconnected', () => { characteristic = null; });
-  const server = await device.gatt.connect();
-  characteristic = await findWritable(server);
-  return device.name || 'Máy in';
+  const d = await (navigator as any).bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICES });
+  attach(d);
+  setLink('connecting');
+  try { await connectGatt(d); } catch (e) { setLink('disconnected'); throw e; }
+  await savePrinter({ ...settings, mode: 'ble', deviceName: d.name || 'Máy in', deviceId: d.id });
+  return d.name || 'Máy in';
+}
+
+/**
+ * Find the printer used before without asking: Chrome remembers allowed devices (getDevices). If the
+ * printer is not advertising yet we wait for its advertisement, then connect. No tap needed.
+ */
+export async function reconnectSilently(): Promise<boolean> {
+  if (settings.mode !== 'ble' || !bleSupported()) return false;
+  if (characteristic && device?.gatt?.connected) { setLink('connected'); return true; }
+  setLink('connecting');
+  try {
+    if (!device) {
+      const known: any[] = (await (navigator as any).bluetooth.getDevices?.().catch(() => [])) || [];
+      const d = known.find((x) => settings.deviceId && x.id === settings.deviceId) || known.find((x) => settings.deviceName && x.name === settings.deviceName);
+      if (!d) { setLink('disconnected'); return false; }
+      attach(d);
+    }
+    try {
+      await connectGatt(device, 6000);
+    } catch {
+      // Some printers only accept a connection right after they advertise.
+      if (!device.watchAdvertisements) throw new Error('no-ads');
+      await new Promise<void>((resolve, reject) => {
+        const ac = new AbortController();
+        const timer = setTimeout(() => { ac.abort(); reject(new Error('timeout')); }, 12000);
+        device.addEventListener('advertisementreceived', async () => {
+          clearTimeout(timer); ac.abort();
+          try { await connectGatt(device, 6000); resolve(); } catch (e) { reject(e); }
+        }, { once: true });
+        device.watchAdvertisements({ signal: ac.signal }).catch(reject);
+      });
+    }
+    return true;
+  } catch {
+    setLink('disconnected');
+    return false;
+  }
+}
+
+/**
+ * One tap to get the printer back when the silent way is not available on this phone: the Bluetooth
+ * picker opens already filtered to the saved printer's name, so it is a single choice.
+ */
+export async function reconnectWithTap(): Promise<string> {
+  if (await reconnectSilently()) return settings.deviceName || 'Máy in';
+  if (!bleSupported()) throw new Error('Trình duyệt này không hỗ trợ Bluetooth');
+  const name = settings.deviceName;
+  const d = await (navigator as any).bluetooth.requestDevice(name && name !== 'Máy in'
+    ? { filters: [{ name }, { namePrefix: name.slice(0, 4) }], optionalServices: SERVICES }
+    : { acceptAllDevices: true, optionalServices: SERVICES });
+  attach(d);
+  setLink('connecting');
+  try { await connectGatt(d); } catch (e) { setLink('disconnected'); throw e; }
+  await savePrinter({ ...settings, deviceName: d.name || name, deviceId: d.id });
+  return d.name || 'Máy in';
+}
+
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let retries = 0;
+function scheduleReconnect() {
+  clearTimeout(retryTimer);
+  if (retries >= 4 || settings.mode !== 'ble') return;
+  retryTimer = setTimeout(async () => {
+    retries++;
+    if (await reconnectSilently()) retries = 0; else scheduleReconnect();
+  }, 3000 * (retries + 1));
+}
+
+/** Call once at app start: reconnect now, and again whenever the app comes back to the foreground. */
+export function startPrinterKeepAlive() {
+  const go = () => { if (settings.mode === 'ble' && !(characteristic && device?.gatt?.connected)) { retries = 0; reconnectSilently(); } };
+  go();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) go(); });
 }
 
 async function ensureBle() {
   if (characteristic && device?.gatt?.connected) return;
-  if (!device) {
-    // Chrome can return previously-allowed devices without a new picker (where supported).
-    const known: any[] = (await (navigator as any).bluetooth?.getDevices?.().catch(() => [])) || [];
-    device = known.find((d) => !settings.deviceName || d.name === settings.deviceName) || null;
-  }
-  if (!device) throw new Error('Chưa kết nối máy in. Vào Máy in › Kết nối.');
-  const server = await device.gatt.connect();
-  characteristic = await findWritable(server);
+  if (await reconnectSilently()) return;
+  throw new Error('Máy in chưa kết nối. Bật máy in rồi chạm "Kết nối lại máy in" trên màn bán hàng.');
 }
 
 async function writeBle(bytes: Uint8Array) {
@@ -389,4 +487,9 @@ export async function printDoc(doc: PLine[], opts: { kick?: boolean; copies?: nu
 /** Just open the cash drawer. */
 export async function kickDrawer() {
   await sendBytes(new Uint8Array([0x1b, 0x40, 0x1b, 0x70, 0x00, 0x19, 0xfa]));
+}
+
+/** React hook: current printer link (for the reconnect banner). */
+export function usePrinterLink(): PrinterLink {
+  return useSyncExternalStore(onPrinterLink, printerLink);
 }

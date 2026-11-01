@@ -6,7 +6,7 @@ import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
 import { PugSvg, pugEnabled, pugSay, setPugEnabled } from '../pug';
 import { addToCart, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
-import { appVersion, CAT_COLORS, Icon, Sheet, ThemeToggle } from '../ui';
+import { appVersion, CAT_COLORS, Icon, PrinterBanner, Sheet, ThemeToggle } from '../ui';
 import Ticket from './Ticket';
 
 export default function OrderScreen() {
@@ -84,6 +84,7 @@ export default function OrderScreen() {
           </div>
         )}
 
+        <div style={{ padding: '8px 16px 0' }}><PrinterBanner /></div>
         <nav className="chips" aria-label="Danh mục">
           {cats.map((c) => (
             <button key={c.id} className={'chip' + (!q && c.id === activeCat ? ' on' : '')} onClick={() => { setCat(c.id); setQ(''); }}>

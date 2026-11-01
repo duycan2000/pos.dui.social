@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import AdminApp from './admin/AdminApp';
-import { printerSettings } from './lib/printer';
+import { printerSettings, startPrinterKeepAlive } from './lib/printer';
 import { receiptDoc, ticketDoc, tryPrint } from './lib/receipts';
 import { boot, getState, navigate, setPrintHook, toast, useStore } from './lib/store';
 import { startSync } from './lib/sync';
@@ -34,7 +34,7 @@ export default function App() {
   useEffect(() => {
     if (started) return;
     started = true;
-    boot().then(() => startSync());
+    boot().then(() => { startSync(); startPrinterKeepAlive(); });
     // Automatic printing: bar tickets for new rounds, receipts after payment (per-device settings).
     setPrintHook((kind, order, newLines) => {
       const p = printerSettings();

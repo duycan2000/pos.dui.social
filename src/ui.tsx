@@ -1,5 +1,6 @@
 // Shared UI: icons, top bar, sheets, PIN pad, amount keypad, segmented control, approval dialog (S18), toast.
 import { APK_URL, inAndroidApp, isAndroid } from './lib/platform';
+import { reconnectWithTap, usePrinterLink } from './lib/printer';
 import { resolvedTheme, setTheme, useTheme } from './lib/theme';
 import { type ReactNode, useEffect, useState } from 'react';
 import { verifyPin } from '../shared/crypto';
@@ -297,5 +298,22 @@ export function ApkLink() {
       <Icon name="download" size={18} />
       <span className="col" style={{ gap: 0 }}><b>Tải app Android</b><span className="tiny muted">{isAndroid() ? 'File APK · mở file để cài' : 'Mở link này trên điện thoại Android'}</span></span>
     </a>
+  );
+}
+
+/** Shown on the selling screens when the Bluetooth printer dropped: one tap brings it back. */
+export function PrinterBanner() {
+  const l = usePrinterLink();
+  const [busy, setBusy] = useState(false);
+  if (l !== 'disconnected' && l !== 'connecting') return null;
+  return (
+    <button className="banner info printer-banner" disabled={busy || l === 'connecting'} onClick={async () => {
+      setBusy(true);
+      try { await reconnectWithTap(); } catch { /* the picker was closed or the printer is off; banner stays */ } finally { setBusy(false); }
+    }}>
+      <Icon name="printer" size={18} />
+      <span className="grow" style={{ textAlign: 'left' }}>{l === 'connecting' ? 'Đang kết nối lại máy in…' : 'Máy in chưa kết nối. Chạm để kết nối lại'}</span>
+      {l === 'connecting' ? <span className="spinner" /> : <Icon name="bluetooth" size={18} />}
+    </button>
   );
 }
