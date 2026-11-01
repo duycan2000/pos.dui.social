@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.15.0 — 01/11/2026
+- Màn đăng nhập và trang đăng nhập máy mới có nút "Tải app Android" (bản APK mới nhất trên GitHub). Tự ẩn khi đang mở trong app Android hoặc trên iPhone/iPad.
+
 ## 0.14.0 — 01/11/2026
 - App sống động hơn, chỉ dùng CSS nhẹ (không thêm thư viện): trang mới trượt lên, danh sách và thẻ hiện lần lượt, số đếm trên nút nảy lên khi đổi, biểu tượng có cử động riêng (đồng bộ xoay khi đang gửi, máy in rung, quà lắc, dấu + xoay), chấm đồng bộ nhấp nháy khi đang gửi/mất mạng.
 - Bàn có khách "thở" nhẹ, bàn đã in tạm tính có vòng sóng; màn Đã thanh toán có dấu tích tự vẽ, vòng toả và pháo giấy; mã VietQR có tia quét khi chờ tiền; biểu đồ mọc lên từ trục; số lãi/lỗ đếm lên; cảnh báo đỏ có nhịp đập.

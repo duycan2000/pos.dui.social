@@ -599,3 +599,10 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .login-brand .brand { background: none; color: var(--accent-fg); }
 }
+
+/* Download the Android app (login / sign-in pages) */
+.apklink { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; margin-top: 6px; padding: 8px 14px 8px 10px; border-radius: 12px;
+  border: 1px dashed var(--border-2); color: var(--text); text-decoration: none; font-size: 14px; }
+.apklink:hover { border-color: var(--accent); }
+.apklink .i-download { color: var(--accent-fg); }
+.apklink:hover .i-download { animation: feed .5s ease-in-out 2; }

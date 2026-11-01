@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { StaffPublic } from '../../shared/types';
 import { login, navigate, useStore } from '../lib/store';
-import { appVersion, Icon, PinPad, ThemeToggle } from '../ui';
+import { ApkLink, appVersion, Icon, PinPad, ThemeToggle } from '../ui';
 
 const ROLE: Record<string, string> = { owner: 'Chủ quán', manager: 'Quản lý', staff: 'Nhân viên' };
 
@@ -28,6 +28,7 @@ export default function Login() {
         <span className="small muted row"><span className={'dot' + (net.online ? '' : ' off')} />{net.online ? 'Đang kết nối' : 'Offline — vẫn bán được'}</span>
         <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => navigate('clock')}><Icon name="clock" size={18} />Chấm công vào / ra ca</button>
         <span className="tiny faint" aria-label="Phiên bản app">Phiên bản {appVersion(true)}</span>
+        <ApkLink />
       </section>
       <section className="login-panel">
         {!who ? (

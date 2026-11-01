@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { passwordRule, validLogin, validPassword, validPin } from '../../shared/crypto';
 import { api } from '../lib/api';
 import { completeRegistration, toast } from '../lib/store';
-import { appVersion, ThemeToggle } from '../ui';
+import { ApkLink, appVersion, ThemeToggle } from '../ui';
 
 function Brand({ sub }: { sub: string }) {
   return (
@@ -95,6 +95,7 @@ export function Register() {
         <label className="field"><span>Đặt tên cho thiết bị này</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Máy quầy, Laptop" /></label>
         <button type="submit" className="btn primary lg block" disabled={!ready || busy || !mode}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
         <p className="tiny faint" style={{ margin: 0 }}>Máy chỉ cần đăng nhập một lần. Sau đó nhân viên chọn tên và nhập PIN như bình thường.</p>
+        <ApkLink />
         <span className="tiny faint">{appVersion()}</span>
       </form>
     </div>

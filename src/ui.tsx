@@ -1,4 +1,5 @@
 // Shared UI: icons, top bar, sheets, PIN pad, amount keypad, segmented control, approval dialog (S18), toast.
+import { APK_URL, inAndroidApp, isAndroid } from './lib/platform';
 import { resolvedTheme, setTheme, useTheme } from './lib/theme';
 import { type ReactNode, useEffect, useState } from 'react';
 import { verifyPin } from '../shared/crypto';
@@ -48,6 +49,7 @@ const paths: Record<string, ReactNode> = {
   move: <><path d="M5 12h14M15 8l4 4-4 4" /><path d="M9 4H5v16h4" /></>,
   merge: <><path d="M6 4v5a5 5 0 0 0 5 5h7" /><path d="M6 20v-2a4 4 0 0 1 4-4" /><path d="M15 11l3 3-3 3" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  download: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 20h14" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
   moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
@@ -285,4 +287,15 @@ export function useCountUp(target: number, ms = 650) {
     return () => cancelAnimationFrame(raf);
   }, [target, ms]);
   return v;
+}
+
+/** "Tải app Android" link (latest APK on GitHub). Hidden when already inside the Android app or on iPhone/iPad. */
+export function ApkLink() {
+  if (inAndroidApp() || /iPhone|iPad|iPod/i.test(navigator.userAgent)) return null;
+  return (
+    <a className="apklink" href={APK_URL} target="_blank" rel="noopener">
+      <Icon name="download" size={18} />
+      <span className="col" style={{ gap: 0 }}><b>Tải app Android</b><span className="tiny muted">{isAndroid() ? 'File APK · mở file để cài' : 'Mở link này trên điện thoại Android'}</span></span>
+    </a>
+  );
 }
