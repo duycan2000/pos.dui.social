@@ -21,6 +21,16 @@ Mở link `*.workers.dev` trên điện thoại Android bằng Chrome → menu �
 2. Máy thứ hai, laptop: mở cùng link, chủ quán nhập PIN để đăng ký (Máy B, C…). Mã đơn theo máy: A-001, B-001.
 3. Vào **Quản trị**: nhập món, gắn nhóm tuỳ chọn, chọn 5 món signature trong **Khuyến mãi**, nhập tài khoản **VietQR** trong **Cài đặt**, thêm nhân viên.
 
+## App Android
+
+Thư mục `android/` là app Android dạng **Trusted Web Activity**: chỉ là lối mở app web trong Chrome, toàn màn hình, có icon riêng. Vì chạy bằng Chrome nên in Bluetooth, offline, đồng bộ hoạt động y như trên trình duyệt, và mỗi lần deploy Worker thì app tự có bản mới (không phải cài lại APK).
+
+- GitHub Actions (`.github/workflows/android.yml`) tự build APK khi `android/` thay đổi, hoặc chạy tay ở tab Actions › Android app › Run workflow.
+- Thiết lập một lần ở Settings › Secrets and variables › Actions: secret `ANDROID_KEYSTORE_PASSWORD` (mật khẩu khoá ký app) và, nếu địa chỉ POS không phải `https://pos.dui.social`, variable `APP_URL`.
+- Link tải luôn trỏ tới bản mới nhất: `https://github.com/duycan2000/pos.dui.social/releases/latest/download/dui-pos.apk`.
+- Worker trả `/.well-known/assetlinks.json` khớp khoá ký (`worker/index.ts`), nhờ vậy app không hiện thanh địa chỉ. Đổi khoá ký thì phải sửa vân tay SHA-256 ở đó.
+- File `android/release.jks` được giữ trong repo; không có mật khẩu thì không dùng được. Mất mật khẩu = phải tạo khoá mới và gỡ cài app cũ trên máy.
+
 ## Chạy trên máy để phát triển
 
 ```bash

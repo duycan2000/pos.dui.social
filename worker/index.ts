@@ -85,9 +85,23 @@ const r = new Router()
   .add('GET', '/api/reports/revenue', 'staff', fin.revenueReport)
   .add('GET', '/api/reports/ytd', 'staff', fin.ytd);
 
+/**
+ * Digital Asset Links for the Android app (android/, a Trusted Web Activity). When this matches the app's
+ * signing key, Android opens the POS full screen in Chrome without an address bar.
+ */
+export const ANDROID_PACKAGE = 'social.dui.pos';
+export const ANDROID_SHA256 = 'B9:42:89:A5:BA:CF:8A:F5:8F:60:D3:B7:C1:F5:CC:B0:7E:D0:FD:C9:9E:8D:6E:FC:53:38:2A:2C:5A:1A:71:00';
+function assetLinks() {
+  return new Response(JSON.stringify([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: { namespace: 'android_app', package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: [ANDROID_SHA256] },
+  }]), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname === '/.well-known/assetlinks.json') return assetLinks();
     if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/media/')) {
       return env.ASSETS.fetch(req);
     }

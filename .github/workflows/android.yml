@@ -1,0 +1,71 @@
+# Builds the Android app (android/, a Trusted Web Activity that opens the POS in Chrome) and publishes the APK
+# as a GitHub Release. Download link that always points to the newest build:
+#   https://github.com/<owner>/<repo>/releases/latest/download/dui-pos.apk
+#
+# Setup once: Settings › Secrets and variables › Actions
+#   - Secret   ANDROID_KEYSTORE_PASSWORD  (the keystore password, given to the owner separately)
+#   - Variable APP_URL                    (optional; the POS address, default https://pos.dui.social)
+name: Android app
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'POS address (leave empty to use the APP_URL variable)'
+        required: false
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ github.event.inputs.app_url || vars.APP_URL || 'https://pos.dui.social' }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Check the signing secret
+        id: secret
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "missing=1" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Thiếu secret ANDROID_KEYSTORE_PASSWORD::Chỉ build bản thử (debug) để kiểm tra. Thêm secret rồi chạy lại workflow để có bản cài chính thức."
+          fi
+
+      - name: Build test APK (no secret yet)
+        if: steps.secret.outputs.missing == '1'
+        working-directory: android
+        run: gradle --no-daemon assembleDebug -PappUrl="$APP_URL"
+
+      - name: Build signed APK
+        if: steps.secret.outputs.missing != '1'
+        working-directory: android
+        run: |
+          gradle --no-daemon assembleRelease -PappUrl="$APP_URL" -PversionCode=${{ github.run_number }} -PversionName="1.${{ github.run_number }}"
+          cp app/build/outputs/apk/release/app-release.apk ../dui-pos.apk
+
+      - name: Publish release
+        if: steps.secret.outputs.missing != '1'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ github.run_number }}
+          name: Dui POS Android 1.${{ github.run_number }}
+          body: |
+            App Android cho Dui Social POS (mở ${{ env.APP_URL }} toàn màn hình bằng Chrome).
+            Cài: tải dui-pos.apk trên điện thoại Android › mở file › cho phép cài từ nguồn này.
+          files: dui-pos.apk
+          make_latest: true

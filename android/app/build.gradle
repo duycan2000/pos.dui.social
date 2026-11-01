@@ -1,0 +1,51 @@
+// Dui POS for Android: a Trusted Web Activity. The app is only a launcher; everything runs in Chrome from
+// the POS web app, so Web Bluetooth printing, offline mode and auto-updates work exactly as in the browser.
+plugins {
+    id 'com.android.application'
+}
+
+def appUrl = (project.findProperty('appUrl') ?: 'https://pos.dui.social').toString().replaceAll('/+$', '')
+def appHost = new URI(appUrl).host
+def assetStatements = '[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"' + appUrl + '"}}]'
+
+android {
+    namespace 'social.dui.pos'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'social.dui.pos'
+        minSdk 24
+        targetSdk 34
+        versionCode((project.findProperty('versionCode') ?: '1').toString().toInteger())
+        versionName((project.findProperty('versionName') ?: '1.0').toString())
+        manifestPlaceholders = [hostName: appHost, launchUrl: appUrl + '/']
+        resValue 'string', 'asset_statements', assetStatements.replace('"', '\\"')
+        resValue 'string', 'app_url', appUrl
+    }
+
+    signingConfigs {
+        release {
+            // The keystore is in the repo; its password is only in the GitHub secret ANDROID_KEYSTORE_PASSWORD.
+            storeFile file('../release.jks')
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            keyAlias 'duipos'
+            keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
