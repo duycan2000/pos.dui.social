@@ -144,7 +144,7 @@ const staffCols = (c: Ctx) => (c.staff?.role === 'owner' ? STAFF_SAFE + ',hourly
 
 export async function listStaff(c: Ctx) {
   requireRole(c, 'owner', 'manager');
-  return json(await all(c.env, `SELECT ${staffCols(c)} FROM staff ORDER BY active DESC, role, name`));
+  return json(await all(c.env, `SELECT ${staffCols(c)} FROM staff WHERE deleted_at IS NULL ORDER BY active DESC, role, name`));
 }
 
 export async function saveStaff(c: Ctx) {
@@ -152,7 +152,7 @@ export async function saveStaff(c: Ctx) {
   const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number }>(c);
   if (b.hourly_rate !== undefined) need(Number.isInteger(b.hourly_rate) && b.hourly_rate >= 0 && b.hourly_rate <= 10_000_000, 400, 'Lương giờ không hợp lệ');
   const id = c.params.id || ulid();
-  const existing = c.params.id ? await first<{ role: Role; active: number }>(c.env, 'SELECT role,active FROM staff WHERE id=?', id) : null;
+  const existing = c.params.id ? await first<{ role: Role; active: number }>(c.env, 'SELECT role,active FROM staff WHERE id=? AND deleted_at IS NULL', id) : null;
   if (c.params.id) need(existing, 404, 'Không tìm thấy nhân viên');
   if (b.role) need(['owner', 'manager', 'staff'].includes(b.role), 400, 'Vai trò không hợp lệ');
   if (existing?.role === 'owner' && ((b.role && b.role !== 'owner') || b.active === 0)) {
@@ -189,6 +189,45 @@ export async function saveStaff(c: Ctx) {
   stmts.push(auditStmt(c.env, { action: existing ? 'staff_update' : 'staff_create', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, after: safe }, ulid()));
   await batch(c.env, stmts);
   return json(await first(c.env, `SELECT ${staffCols(c)} FROM staff WHERE id=?`, id));
+}
+
+/**
+ * Delete a staff member (owner only). Someone with history (orders, time clock, cash, audit) is archived:
+ * hidden from every list and the till, signed out, future shifts removed, but their name stays on old records.
+ * Someone without history is removed completely.
+ */
+export async function deleteStaff(c: Ctx) {
+  requireRole(c, 'owner');
+  const id = c.params.id;
+  const s = await first<{ id: string; name: string; role: Role; active: number }>(c.env, 'SELECT id,name,role,active FROM staff WHERE id=? AND deleted_at IS NULL', id);
+  need(s, 404, 'Không tìm thấy nhân viên');
+  need(id !== c.staff!.id, 409, 'Không tự xoá chính mình được');
+  if (s.role === 'owner') {
+    const owners = await first<{ n: number }>(c.env, "SELECT COUNT(*) n FROM staff WHERE role='owner' AND active=1 AND deleted_at IS NULL AND id<>?", id);
+    need((owners?.n || 0) > 0, 409, 'Phải còn ít nhất một chủ quán');
+  }
+  const [open, busy, hist] = await Promise.all([
+    first<{ n: number }>(c.env, 'SELECT COUNT(*) n FROM time_entry WHERE staff_id=? AND clock_out IS NULL AND deleted_at IS NULL', id),
+    first<{ n: number }>(c.env, "SELECT COUNT(*) n FROM sale_order WHERE staff_id=? AND status IN ('open','awaiting_payment')", id),
+    first<{ n: number }>(c.env, `SELECT
+      (SELECT COUNT(*) FROM sale_order WHERE staff_id=?) + (SELECT COUNT(*) FROM time_entry WHERE staff_id=?) +
+      (SELECT COUNT(*) FROM staff_shift WHERE staff_id=?) + (SELECT COUNT(*) FROM cash_movement WHERE staff_id=? OR approved_by=?) +
+      (SELECT COUNT(*) FROM audit_log WHERE actor_id=? OR approver_id=?) AS n`, id, id, id, id, id, id, id),
+  ]);
+  need(!open?.n, 409, `${s.name} đang trong ca (chưa chấm công ra). Chấm công ra hoặc sửa giờ ra trong Giờ làm trước.`);
+  need(!busy?.n, 409, `${s.name} còn tab/bàn chưa thanh toán. Thanh toán hoặc chuyển cho người khác trước.`);
+  const t = now();
+  const today = new Date(t + 7 * 3600000).toISOString().slice(0, 10);
+  const archived = (hist?.n || 0) > 0;
+  await batch(c.env, [
+    archived
+      ? stmt(c.env, 'UPDATE staff SET active=0, deleted_at=?, updated_at=? WHERE id=?', t, t, id)
+      : stmt(c.env, 'DELETE FROM staff WHERE id=?', id),
+    stmt(c.env, 'DELETE FROM staff_session WHERE staff_id=?', id),
+    stmt(c.env, 'DELETE FROM work_schedule WHERE staff_id=? AND day >= ?', id, today),
+    auditStmt(c.env, { action: 'staff_delete', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, before: { name: s.name, role: s.role }, after: { archived } }, ulid()),
+  ]);
+  return json({ ok: true, archived });
 }
 
 // ----- outlet -----

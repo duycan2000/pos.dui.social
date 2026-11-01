@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.8.0 — 01/11/2026
+- Chủ quán xoá được nhân viên (Quản trị › Nhân viên › chọn người › Xoá nhân viên). Người chưa có dữ liệu thì xoá hẳn; người đã có đơn/chấm công thì ẩn khỏi mọi danh sách và máy bán hàng, nhưng tên vẫn giữ trên đơn, bảng công, nhật ký cũ. Không xoá được khi người đó đang trong ca hoặc còn bàn/tab chưa thanh toán, không tự xoá chính mình, luôn còn ít nhất một chủ quán.
+
 ## 0.7.0 — 01/11/2026
 - Mẫu bill mới bằng tiếng Anh, gọn và rõ: tên quán, dải tiêu đề BILL / RECEIPT, số đơn, bàn, số khách, giờ, người phục vụ; món theo tên tiếng Anh trong Menu kèm tuỳ chọn; Subtotal / Buy 1 Get 1 / Complimentary chỉ hiện khi có; tổng VND; tiền khách đưa, tiền thối, tip.
 - Xem trước cả "Bill tạm tính" và "Hoá đơn đã trả" trong Máy in.

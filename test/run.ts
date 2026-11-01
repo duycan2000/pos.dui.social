@@ -519,6 +519,35 @@ await test('Schedule: add, edit, copy last week (refuses to overwrite unless ask
   assert.equal(mine[0].start, '18:00');
 });
 
+await test('Owner deletes staff: no history → removed; with history → archived but kept on old records', async () => {
+  const fresh = (await call('POST', '/api/admin/staff', { name: 'Tạm', role: 'staff', pin: '7777' })).body;
+  let r = await call('DELETE', `/api/admin/staff/${fresh.id}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.archived, false);
+  assert.equal(env.DB.raw.prepare('SELECT COUNT(*) n FROM staff WHERE id=?').get(fresh.id).n, 0);
+  const nam = (await call('GET', '/api/admin/staff')).body.find((x: any) => x.name === 'Nam');
+  // Clocked in → refused until clocked out.
+  const te = { id: ulid(), staff_id: nam.id, business_day: day, clock_in: Date.now() - 3600000, clock_out: null, break_min: 0, device_id: null, source: 'pos', note: null, created_at: Date.now(), updated_at: Date.now() };
+  await push([{ type: 'time_entry', data: te }]);
+  assert.equal((await call('DELETE', `/api/admin/staff/${nam.id}`)).status, 409);
+  await push([{ type: 'time_entry', data: { ...te, clock_out: Date.now() } }]);
+  r = await call('DELETE', `/api/admin/staff/${nam.id}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.archived, true);
+  assert.ok(!(await call('GET', '/api/admin/staff')).body.some((x: any) => x.id === nam.id));
+  assert.ok(!(await call('GET', '/api/sync/pull?since=0')).body.config.staff.some((x: any) => x.id === nam.id));
+  assert.equal((await call('POST', '/api/auth/staff', { staffId: nam.id, pin: '5555' })).status >= 400, true);
+  const sheet = (await call('GET', `/api/time/sheet?from=${day}&to=${day}`)).body;
+  assert.ok(sheet.staff.find((x: any) => x.id === nam.id)?.deleted_at); // name still resolvable on old entries
+  // Cannot delete yourself.
+  assert.equal((await call('DELETE', `/api/admin/staff/${ownerId}`)).status, 409);
+  // Managers cannot delete.
+  const mgr = (await call('GET', '/api/admin/staff')).body.find((x: any) => x.name === 'Hà');
+  const save = staffSession;
+  staffSession = (await call('POST', '/api/auth/staff', { staffId: mgr.id, pin: '246802' })).body.session;
+  assert.equal((await call('DELETE', `/api/admin/staff/${ownerId}`)).status, 403);
+  staffSession = save;
+});
 await test('Demo data: menu + last month 10–15 orders/day, then a clean wipe that keeps real data', async () => {
   const realBefore = (env.DB.raw.prepare("SELECT COUNT(*) n FROM sale_order WHERE id NOT LIKE 'DEMO%'").get() as any).n;
   const st = (await call('GET', '/api/admin/demo')).body;

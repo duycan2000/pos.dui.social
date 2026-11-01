@@ -11,7 +11,7 @@ import { Loading, Num, Page, run, Select, Text, useLoad } from './common';
 
 interface SheetData {
   from: string; to: string; owner: boolean;
-  staff: { id: string; name: string; role: string; active: number; hourly_rate?: number }[];
+  staff: { id: string; name: string; role: string; active: number; hourly_rate?: number; deleted_at?: number | null }[];
   entries: (TimeEntry & { edited_by_name?: string | null })[];
   schedule: WorkShift[];
   tips: { staff_id: string; tips: number }[];
@@ -73,7 +73,7 @@ function Timesheet({ tab, setTab }: { tab: 'sheet' | 'schedule'; setTab: (t: 'sh
   }, [d]);
   const name = (id: string) => d?.staff.find((x) => x.id === id)?.name ?? '—';
   const tipOf = (id: string) => d?.tips.find((x) => x.staff_id === id)?.tips ?? 0;
-  const people = d ? d.staff.filter((x) => totals.has(x.id) || x.active) : [];
+  const people = d ? d.staff.filter((x) => totals.has(x.id) || (x.active && !x.deleted_at)) : [];
   const working = d ? d.entries.filter((e) => !e.clock_out) : [];
   const forgot = working.filter((e) => Date.now() - e.clock_in > 14 * 3600000);
   const entries = d ? d.entries.filter((e) => !who || e.staff_id === who).sort((a, b) => b.clock_in - a.clock_in) : [];
@@ -124,7 +124,7 @@ function Timesheet({ tab, setTab }: { tab: 'sheet' | 'schedule'; setTab: (t: 'sh
                   const t = totals.get(p.id);
                   return (
                     <tr key={p.id} className={'click' + (who === p.id ? ' on' : '')} onClick={() => setWho(who === p.id ? null : p.id)} style={who === p.id ? { background: 'var(--accent-soft)' } : undefined}>
-                      <td><b>{p.name}</b>{!p.active && <span className="tiny faint"> · nghỉ việc</span>}</td>
+                      <td><b>{p.name}</b>{!p.active && <span className="tiny faint"> · {p.deleted_at ? 'đã xoá' : 'nghỉ'}</span>}</td>
                       <td className="num">{t?.entries ?? 0}</td>
                       <td className="num">{fmtMinutes(t?.minutes ?? 0)}</td>
                       <td className="num muted">{t?.night_minutes ? fmtMinutes(t.night_minutes) : '–'}</td>

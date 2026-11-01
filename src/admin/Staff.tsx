@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { pinRule, validPin } from '../../shared/crypto';
 import type { Role } from '../../shared/types';
 import { vnd } from '../../shared/util';
-import { get, post, put } from '../lib/api';
-import { Sheet } from '../ui';
+import { del, get, post, put } from '../lib/api';
+import { useStore } from '../lib/store';
+import { Confirm, Icon, Sheet } from '../ui';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
 
 interface S { id?: string; name: string; role: Role; active: number; max_discount_pct: number; cash_out_limit: number; hourly_rate?: number; pin?: string }
@@ -13,6 +14,16 @@ const ROLE: Record<Role, string> = { owner: 'Chủ quán', manager: 'Quản lý'
 export default function Staff() {
   const list = useLoad(() => get<S[]>('/api/admin/staff'));
   const [e, setE] = useState<S | null>(null);
+  const [askDel, setAskDel] = useState(false);
+  const me = useStore((st) => st.staff?.id);
+  const remove = async () => {
+    setAskDel(false);
+    const r = await run(() => del<{ archived: boolean }>(`/api/admin/staff/${e!.id}`));
+    if (r) {
+      run(async () => 1, r.archived ? `Đã xoá ${e!.name}. Tên vẫn giữ trên đơn và bảng công cũ.` : `Đã xoá ${e!.name}`);
+      setE(null); list.reload();
+    }
+  };
   const save = async () => {
     if (!e?.name.trim()) return;
     if (e.pin && !validPin(e.pin, e.role)) return;
@@ -43,8 +54,18 @@ export default function Staff() {
             <Num label="Giảm giá tối đa % (dùng ở P2)" value={e.max_discount_pct} onChange={(v) => setE({ ...e, max_discount_pct: Math.round(v) })} />
             {e.id && <Toggle label="Đang làm" checked={!!e.active} onChange={(v) => setE({ ...e, active: v ? 1 : 0 })} />}
             <button className="btn primary lg" disabled={!e.name.trim() || (!e.id && !validPin(e.pin || '', e.role)) || (!!e.pin && !validPin(e.pin, e.role))} onClick={save}>Lưu</button>
+            {e.id && e.id !== me && (
+              <button className="btn ghost danger-text" onClick={() => setAskDel(true)}><Icon name="trash" size={18} />Xoá nhân viên</button>
+            )}
           </div>
         </Sheet>
+      )}
+      {askDel && e && (
+        <Confirm title={`Xoá ${e.name}?`} danger okText="Xoá nhân viên" onCancel={() => setAskDel(false)} onOk={remove}
+          text={<>
+            {e.name} không đăng nhập, chấm công hay xuất hiện trên máy bán hàng được nữa; lịch làm từ hôm nay bị xoá.
+            Đơn, bảng công và nhật ký cũ vẫn giữ tên {e.name} để báo cáo đúng. Không hoàn tác được — muốn tạm nghỉ thì chỉ cần tắt "Đang làm".
+          </>} />
       )}
     </Page>
   );

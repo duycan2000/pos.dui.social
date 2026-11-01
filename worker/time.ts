@@ -45,7 +45,7 @@ export async function sheet(c: Ctx) {
   need(DAY.test(from) && DAY.test(to) && from <= to, 400, 'Khoảng ngày không hợp lệ');
   const owner = c.staff!.role === 'owner';
   const [staff, entries, schedule, tips, o] = await Promise.all([
-    all(c.env, `SELECT id,name,role,active${owner ? ',hourly_rate' : ''} FROM staff ORDER BY active DESC, role, name`),
+    all(c.env, `SELECT id,name,role,active${owner ? ',hourly_rate' : ''}, deleted_at FROM staff ORDER BY active DESC, role, name`),
     all(c.env, `SELECT t.*, e.name edited_by_name FROM time_entry t LEFT JOIN staff e ON e.id=t.edited_by
       WHERE t.deleted_at IS NULL AND (t.business_day BETWEEN ? AND ? OR (t.clock_out IS NULL AND t.business_day <= ?)) ORDER BY t.clock_in`, from, to, to),
     all(c.env, 'SELECT id,staff_id,day,start,end,note FROM work_schedule WHERE day BETWEEN ? AND ? ORDER BY day,start', from, to),
