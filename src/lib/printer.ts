@@ -258,7 +258,16 @@ export type PLine =
   | { t: 'band'; text: string }
   | { t: 'hr'; dashed?: boolean; heavy?: boolean }
   | { t: 'space'; h?: number }
-  | { t: 'image'; canvas: HTMLCanvasElement; width?: number };
+  | { t: 'image'; canvas: HTMLCanvasElement; width?: number; crisp?: boolean }
+  /**
+   * Guest-bill item list; rows are [#, name, qty, price, % off, amount]. 80mm: the bordered six-column
+   * table of the CukCuk sample. 58mm (SUNMI V2 Pro and most handhelds, 384 dots): six columns don't fit,
+   * so each item is two lines — "1. NAME (options)" then "2 × 45,000  -50%" with the amount on the right.
+   */
+  | { t: 'billitems'; cols: string[]; rows: string[][] };
+
+const BILL_COL_W = [0.055, 0.315, 0.075, 0.2, 0.105, 0.25];
+const BILL_COL_ALIGN = ['center', 'left', 'right', 'right', 'center', 'right'] as const;
 
 const FONT = "'Be Vietnam Pro', 'Roboto', Arial, sans-serif";
 const SIZES = { sm: 20, md: 24, lg: 30, xl: 44 };
@@ -292,12 +301,74 @@ export function renderDoc(doc: PLine[], paper: 58 | 80): HTMLCanvasElement {
   const pad = 4;
   const canvas = document.createElement('canvas');
   const measure = canvas.getContext('2d')!;
+  if (width >= 576) {
+    doc = doc.map((l): PLine => l.t !== 'billitems' ? l : {
+      t: 'table', rows: l.rows, cols: l.cols.map((label, k) => ({ label, w: BILL_COL_W[k], align: BILL_COL_ALIGN[k] })),
+    });
+  }
   // first pass: measure height
   const ops: { y: number; draw: (ctx: CanvasRenderingContext2D) => void }[] = [];
   let y = 8;
   for (const l of doc) {
     if (l.t === 'space') { y += l.h ?? 12; continue; }
+    if (l.t === 'billitems') {
+      // Compact 58mm list (see the type). Header and closing rules are solid; items are separated by a hairline.
+      const nameF = `700 21px ${FONT}`, numF = `400 20px ${FONT}`, numB = `700 21px ${FONT}`, headF = `700 18px ${FONT}`;
+      const indent = 26;
+      const rule = (yy: number, dashed = false) => ops.push({ y: yy, draw: (ctx) => {
+        ctx.setLineDash(dashed ? [3, 4] : []); ctx.lineWidth = dashed ? 1 : 2;
+        ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(width - pad, yy); ctx.stroke();
+        ctx.setLineDash([]); ctx.lineWidth = 2;
+      } });
+      const [, cItem, cQty, cPrice, , cAmt] = l.cols;
+      rule(y + 2);
+      { const yy = y + 24;
+        ops.push({ y: yy, draw: (ctx) => {
+          ctx.font = headF; ctx.textAlign = 'left'; ctx.fillText(cItem, pad, yy);
+          ctx.textAlign = 'left'; ctx.fillText(`${cQty} × ${cPrice}`, pad + indent, yy + 22);
+          ctx.textAlign = 'right'; ctx.fillText(cAmt, width - pad, yy + 22);
+        } }); }
+      y += 52;
+      rule(y);
+      y += 4;
+      l.rows.forEach((r, n) => {
+        const [no, name, qty, price, off, amount] = r;
+        measure.font = nameF;
+        const lines = wrap(measure, name, width - pad * 2 - indent);
+        lines.forEach((line, i) => {
+          const yy = y + 22;
+          ops.push({ y: yy, draw: (ctx) => {
+            ctx.font = nameF; ctx.textAlign = 'left';
+            if (i === 0) ctx.fillText(no + '.', pad, yy);
+            ctx.fillText(line, pad + indent, yy);
+          } });
+          y += 26;
+        });
+        const yy = y + 21;
+        const left = `${qty} × ${price}${off ? `   -${off}%` : ''}`;
+        ops.push({ y: yy, draw: (ctx) => {
+          ctx.font = numF; ctx.textAlign = 'left'; ctx.fillText(left, pad + indent, yy);
+          ctx.font = numB; ctx.textAlign = 'right'; ctx.fillText(amount, width - pad, yy);
+        } });
+        y += 28;
+        if (n < l.rows.length - 1) { rule(y + 3, true); y += 8; }
+      });
+      y += 4;
+      rule(y);
+      y += 10;
+      continue;
+    }
     if (l.t === 'image') {
+      if (l.crisp) {
+        // Whole-number scaling only: every QR module becomes an exact block of dots, so cheap heads scan cleanly.
+        const target = l.width ?? Math.round(width * 0.62);
+        const w = l.canvas.width * Math.max(1, Math.floor(target / l.canvas.width));
+        const h = Math.round((l.canvas.height / l.canvas.width) * w);
+        const yy = y + 4;
+        ops.push({ y: yy, draw: (ctx) => { ctx.imageSmoothingEnabled = false; ctx.drawImage(l.canvas, Math.round((width - w) / 2), yy, w, h); } });
+        y += h + 8;
+        continue;
+      }
       const w = Math.min(width - pad * 2, l.width ?? Math.round(width * 0.62));
       const h = Math.round((l.canvas.height / l.canvas.width) * w);
       const yy = y + 4;
@@ -431,9 +502,19 @@ export function renderDoc(doc: PLine[], paper: 58 | 80): HTMLCanvasElement {
       y = bottom + 8;
       continue;
     }
-    const size = SIZES[l.size ?? 'md'];
-    const font = `${l.italic ? 'italic ' : ''}${l.bold ? 700 : 400} ${size}px ${FONT}`;
+    let size = SIZES[l.size ?? 'md'];
+    let font = `${l.italic ? 'italic ' : ''}${l.bold ? 700 : 400} ${size}px ${FONT}`;
     measure.font = font;
+    if (l.t === 'row') {
+      // On 58mm a big "Tổng thanh toán   1.250.000đ" would wrap; shrink it (down to 75%) to keep one line.
+      const need = measure.measureText(l.left).width + measure.measureText(l.right).width + 12;
+      const room = width - pad * 2;
+      if (need > room) {
+        size = Math.max(Math.round(size * 0.75), Math.floor((size * room) / need));
+        font = `${l.italic ? 'italic ' : ''}${l.bold ? 700 : 400} ${size}px ${FONT}`;
+        measure.font = font;
+      }
+    }
     const lh = Math.round(size * 1.3);
     if (l.t === 'text') {
       for (const line of wrap(measure, l.text, width - pad * 2)) {

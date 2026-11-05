@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.21.0 — 05/11/2026
+- Bill tự đổi bố cục theo khổ giấy. Khổ 58mm (SUNMI V2 Pro: giấy 58mm, vùng in 48mm = 384 điểm) dùng kiểu gọn: mỗi món 2 dòng ("1. TÊN MÓN (tuỳ chọn)" rồi "SL × đơn giá  -%KM" và thành tiền bên phải), chữ to dễ đọc, không còn bảng 6 cột bị chật. Khổ 80mm giữ bảng 6 cột như mẫu CukCuk.
+- Dòng tổng tiền tự thu nhỏ chữ để không bị xuống dòng trên giấy hẹp.
+- Mã QR in nét hơn: mỗi ô của mã được phóng to đúng số nguyên lần (không bị nhoè trên đầu in nhiệt), dễ quét hơn.
+- Cài đặt máy in: thêm ghi chú khổ giấy cho máy SUNMI.
+
 ## 0.20.0 — 05/11/2026
 - In trên máy in có sẵn của máy POS SUNMI (V2 Pro, V2s, T2…): chọn ☰ › Máy in › "Máy in Sunmi". App tự nhận ra máy SUNMI và gợi ý. In qua app Android Dui POS (bản APK mới), chạy cả trong app lẫn Chrome trên máy đó.
 - Cùng cách này in được ra máy in Bluetooth thường đã ghép đôi (nhập tên máy in), không cần RawBT.

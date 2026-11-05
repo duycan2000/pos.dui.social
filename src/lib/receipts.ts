@@ -80,10 +80,8 @@ function items(cfg: PosConfig, o: Order, lang: Lang): PLine {
     const off = l.comp ? 100 : gross ? Math.round((promoOf(l.id) / gross) * 100) : 0;
     return [String(i + 1), itemName(cfg, l, lang), String(l.qty), money(l.unit_price, lang), off ? String(off) : '', money(gross, lang)];
   });
-  return {
-    t: 'table', rows,
-    cols: L[lang].cols.map((label, k) => ({ label, w: [0.055, 0.315, 0.075, 0.2, 0.105, 0.25][k], align: (['center', 'left', 'right', 'right', 'center', 'right'] as const)[k] })),
-  };
+  // The printer picks the layout for the paper width (80mm table / 58mm two-line items).
+  return { t: 'billitems', rows, cols: L[lang].cols };
 }
 
 function totals(o: Order, lang: Lang): PLine[] {
@@ -114,10 +112,11 @@ async function qrBlock(cfg: PosConfig, o: Order, amount: number, lang: Lang, wit
   const t = L[lang];
   const purpose = 'DUI ' + o.short_code.replace('-', '');
   const canvas = document.createElement('canvas');
-  await QRCode.toCanvas(canvas, vietQrPayload({ bankBin: bin, account: acc, amount, purpose }), { margin: 1, width: 300, errorCorrectionLevel: 'M' });
+  // One pixel per module; the printer scales it by a whole number to fit the paper (crisp on 58mm).
+  await QRCode.toCanvas(canvas, vietQrPayload({ bankBin: bin, account: acc, amount, purpose }), { margin: 2, scale: 1, errorCorrectionLevel: 'M' });
   const out: PLine[] = [{ t: 'space', h: 6 }];
   if (withTitle) out.push({ t: 'text', text: t.scan, align: 'center', size: 'md', bold: true });
-  out.push({ t: 'image', canvas, width: 230 });
+  out.push({ t: 'image', canvas, crisp: true });
   out.push({ t: 'text', text: [bankShort(bin), holder, acc].filter(Boolean).join(' - '), align: 'center', size: 'sm', bold: true });
   out.push({ t: 'text', text: `${t.note} ${purpose} · ${amt(amount, lang)}`, align: 'center', size: 'sm' });
   return out;

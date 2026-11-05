@@ -110,6 +110,10 @@ export default function PrinterSettings() {
           <>
             <div className="section-title">Giấy</div>
             <Segmented value={String(p.paper) as '58' | '80'} onChange={(v) => update({ paper: v === '80' ? 80 : 58 })} options={[['58', 'Khổ 58mm'], ['80', 'Khổ 80mm']]} />
+            <p className="tiny faint" style={{ margin: '6px 0 0' }}>
+              {isSunmi() ? 'Máy SUNMI V2 Pro dùng giấy 58mm (vùng in 48mm). Chọn 58mm: bill tự đổi sang kiểu gọn, mỗi món 2 dòng.'
+                : '58mm: bill kiểu gọn, mỗi món 2 dòng (máy cầm tay, SUNMI). 80mm: bảng 6 cột như mẫu CukCuk.'}
+            </p>
             <div className="section-title">Tự động</div>
             <div className="list">
               <label className="li check"><input type="checkbox" checked={p.autoReceipt} onChange={(e) => update({ autoReceipt: e.target.checked })} /><span className="grow">In hoá đơn sau mỗi lần thanh toán</span></label>
