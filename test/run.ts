@@ -121,14 +121,25 @@ await test('Admin routes reject without staff session; login works', async () =>
   staffSession = r.body.session;
   assert.ok(staffSession);
 });
-await test('Owner sets logins and passwords; staff cannot have one; revoke other devices', async () => {
+await test('Owner sets logins and passwords (staff too); revoke other devices', async () => {
   assert.equal((await call('PUT', `/api/admin/staff/${ownerId}`, { password: 'short' })).status, 400);
   assert.equal((await call('PUT', `/api/admin/staff/${ownerId}`, { login: 'duy', password: 'quay-bar-2027' })).status, 200);
   const me = (await call('GET', '/api/admin/staff')).body.find((x: any) => x.id === ownerId);
   assert.equal(me.login, 'duy');
   assert.equal(me.has_password, 1);
-  const st = await call('POST', '/api/admin/staff', { name: 'Tí', role: 'staff', pin: '4321', login: 'ti', password: 'abcdefgh1' });
-  assert.equal(st.status, 400);
+  const st = await call('POST', '/api/admin/staff', { name: 'Tí', role: 'staff', pin: '4321', login: 'ti.dui', password: 'abcdefgh1' });
+  assert.equal(st.status, 200);
+  const ti = (await call('GET', '/api/admin/staff')).body.find((x: any) => x.name === 'Tí');
+  assert.equal(ti.login, 'ti.dui');
+  assert.equal(ti.has_password, 1);
+  { // a staff account signs a new device in
+    const keep = deviceToken; deviceToken = '';
+    assert.equal((await call('POST', '/api/devices/register', { login: 'ti.dui', password: 'abcdefgh1', deviceName: 'Máy Tí' })).status, 200);
+    deviceToken = keep;
+  }
+  // remove the account: login cleared, PIN stays
+  assert.equal((await call('PUT', `/api/admin/staff/${ti.id}`, { login: null })).status, 200);
+  assert.equal((await call('GET', '/api/admin/staff')).body.find((x: any) => x.id === ti.id).has_password, 0);
   const mgr = await call('POST', '/api/admin/staff', { name: 'Mai', role: 'manager', pin: '135790', login: 'duy', password: 'abcdefgh1' });
   assert.equal(mgr.status, 409); // login already taken
   // Revoke: every other device is signed out.

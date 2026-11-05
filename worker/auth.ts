@@ -89,7 +89,8 @@ async function findStaffByPin(env: Env, pin: string, roles: Role[]) {
 }
 
 /**
- * Add another device (2nd Android, laptop for back office). Needs an owner/manager login + password.
+ * Add another device (2nd Android, laptop for back office). Needs a staff login + password (any role the
+ * owner gave an account; the owner sees and can revoke every device in Quản trị › Thiết bị).
  * Installs from before passwords existed keep the old manager-PIN way until someone sets a password.
  */
 export async function registerDevice(c: Ctx) {
@@ -103,7 +104,7 @@ export async function registerDevice(c: Ctx) {
     const userKey = 'login:' + login;
     await assertNotLocked(c.env, userKey);
     const s = await first<{ id: string; pw_salt: string; pw_hash: string }>(c.env,
-      "SELECT id,pw_salt,pw_hash FROM staff WHERE login=? AND active=1 AND deleted_at IS NULL AND role IN ('owner','manager') AND pw_hash IS NOT NULL", login);
+      "SELECT id,pw_salt,pw_hash FROM staff WHERE login=? AND active=1 AND deleted_at IS NULL AND pw_hash IS NOT NULL", login);
     if (!s || !(await verifyPin(b.password!, s.pw_salt, s.pw_hash))) {
       await recordFail(c.env, ipKey);
       await recordFail(c.env, userKey);

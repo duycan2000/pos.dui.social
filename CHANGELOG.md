@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.23.0 — 05/11/2026
+- Nút "+ Tạo tài khoản" cho từng người trong Quản trị › Nhân viên & tài khoản, và nút "Tạo tài khoản đăng nhập" trong form nhân viên. Tự gợi ý tên đăng nhập theo tên (Linh → linh) và tạo mật khẩu ngẫu nhiên dễ đọc (dui-kmpa-4821).
+- Sau khi tạo: màn "Đã tạo tài khoản" hiện tên đăng nhập + mật khẩu, nút "Chép để gửi" cho nhân viên.
+- Mọi vai trò (cả Nhân viên) đều có thể có tài khoản để đăng nhập máy mới. Trên máy đã đăng nhập vẫn chọn tên + PIN. Chỉ Chủ quán / Quản lý vào được Quản trị.
+- Xoá tài khoản (giữ PIN), đổi mật khẩu, hiện/ẩn mật khẩu.
+
 ## 0.22.0 — 05/11/2026
 - Sửa lỗi lớn: các bảng bật lên (thêm nhân viên, thêm món, sửa bàn, xác nhận…) bị đẩy lệch lên ngoài màn hình trên điện thoại, nhất là ở trang ngắn như Nhân viên, nên trông như không có chức năng thêm. Nguyên nhân: hiệu ứng chuyển trang giữ lại "transform" làm khung cố định bị neo sai. Bảng bật lên giờ luôn hiện đúng ở đáy màn hình.
 - Quản trị: thêm nhóm "Nhân sự" lên đầu, gồm "Nhân viên & tài khoản" (thêm người, PIN, tài khoản đăng nhập, vai trò) và "Giờ làm".

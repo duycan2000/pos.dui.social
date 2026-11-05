@@ -185,11 +185,10 @@ export async function saveStaff(c: Ctx) {
     need(sets.length || b.login !== undefined || b.password, 400, 'Không có gì để cập nhật');
     stmts.push(stmt(c.env, `UPDATE staff SET ${[...sets, 'updated_at=?'].join(',')} WHERE id=?`, ...vals, t, id));
   }
-  // Login + password (owner/manager only; staff sign in with their PIN on registered devices).
-  const role = b.role ?? existing?.role;
-  if (role === 'staff' && !b.password && !b.login) b.login = undefined; // nothing to set for a PIN-only staff member
+  // Optional login + password for anyone. It signs a new device in (that device then sells, with name + PIN
+  // as usual); only owner/manager accounts open Quản trị. Staff without an account just use their PIN.
+  if (!b.password && !b.login && b.login !== null) b.login = undefined; // '' with no password = nothing to set
   if (b.login !== undefined || b.password) {
-    need(role !== 'staff', 400, 'Chỉ chủ quán và quản lý có tài khoản đăng nhập');
     if (b.login !== undefined && b.login !== null && b.login !== '') {
       need(validLogin(b.login), 400, 'Email hoặc tên đăng nhập không hợp lệ (3–64 ký tự, không dấu, không khoảng trắng)');
       const taken = await first(c.env, 'SELECT id FROM staff WHERE login=? AND id<>?', normalizeLogin(b.login), id);
@@ -206,7 +205,6 @@ export async function saveStaff(c: Ctx) {
       stmts.push(stmt(c.env, 'UPDATE staff SET pw_salt=?, pw_hash=? WHERE id=?', ps, await hashPin(b.password, ps), id));
     }
   }
-  if (role === 'staff' && existing && existing.role !== 'staff') stmts.push(stmt(c.env, 'UPDATE staff SET login=NULL, pw_salt=NULL, pw_hash=NULL WHERE id=?', id));
   const safe = { ...b, pin: b.pin ? '••••' : undefined, password: b.password ? '••••' : undefined };
   stmts.push(auditStmt(c.env, { action: existing ? 'staff_update' : 'staff_create', entity: 'staff', entity_id: id, actor_id: c.staff!.id, device_id: c.device!.id, after: safe }, ulid()));
   await batch(c.env, stmts);
