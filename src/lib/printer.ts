@@ -11,7 +11,9 @@ import { useSyncExternalStore } from 'react';
 import { kv } from './db';
 
 export interface PrinterSettings {
-  mode: 'none' | 'ble' | 'rawbt';
+  mode: 'none' | 'ble' | 'rawbt' | 'app';
+  /** For mode 'app': paired printer name; empty = the SUNMI built-in printer (InnerPrinter). */
+  appPrinter?: string;
   paper: 58 | 80;
   autoReceipt: boolean;   // print the bill after each payment
   autoQrBill?: boolean;   // print the bill with its VietQR code when the guest pays by transfer (default on)
@@ -206,6 +208,25 @@ async function writeBle(bytes: Uint8Array) {
   }
 }
 
+/**
+ * Through our own Android app (android/…/PrintActivity): prints on the SUNMI built-in printer, or on any
+ * Bluetooth printer already paired in Android settings — no RawBT needed. Works from the app and from Chrome
+ * on the same device; if the app is missing, Chrome offers the APK.
+ */
+function writeApp(bytes: Uint8Array) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const b64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fallback = encodeURIComponent('https://github.com/duycan2000/pos.dui.social/releases/latest/download/dui-pos.apk');
+  const printer = (settings.appPrinter || 'InnerPrinter').replace(/[;#]/g, '');
+  window.location.href = `intent:#Intent;action=social.dui.pos.PRINT;package=social.dui.pos;S.printer=${encodeURIComponent(printer)};S.data=${b64};S.browser_fallback_url=${fallback};end`;
+}
+
+/** SUNMI POS terminals (V2 Pro, V2s, P2, T2…) — offer the built-in printer. */
+export function isSunmi() {
+  return /SUNMI|V2_PRO|V2s|V2 Pro|P2_PRO|T2s?\b/i.test(navigator.userAgent);
+}
+
 function writeRawBt(bytes: Uint8Array) {
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -217,6 +238,7 @@ function writeRawBt(bytes: Uint8Array) {
 export async function sendBytes(bytes: Uint8Array) {
   if (settings.mode === 'ble') return writeBle(bytes);
   if (settings.mode === 'rawbt') return writeRawBt(bytes);
+  if (settings.mode === 'app') return writeApp(bytes);
   throw new Error('Chưa chọn máy in');
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -481,6 +503,12 @@ export async function printDoc(doc: PLine[], opts: { kick?: boolean; copies?: nu
   const canvas = renderDoc(doc, settings.paper);
   const bytes = canvasToEscPos(canvas, opts);
   const copies = Math.max(1, opts.copies ?? 1);
+  if (settings.mode === 'rawbt' || settings.mode === 'app') {
+    // One hand-off to the other app: all copies in a single job.
+    const all = new Uint8Array(bytes.length * copies);
+    for (let i = 0; i < copies; i++) all.set(bytes, i * bytes.length);
+    return sendBytes(all);
+  }
   for (let i = 0; i < copies; i++) await sendBytes(i === 0 ? bytes : canvasToEscPos(canvas));
 }
 

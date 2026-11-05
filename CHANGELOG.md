@@ -2,6 +2,11 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.20.0 — 05/11/2026
+- In trên máy in có sẵn của máy POS SUNMI (V2 Pro, V2s, T2…): chọn ☰ › Máy in › "Máy in Sunmi". App tự nhận ra máy SUNMI và gợi ý. In qua app Android Dui POS (bản APK mới), chạy cả trong app lẫn Chrome trên máy đó.
+- Cùng cách này in được ra máy in Bluetooth thường đã ghép đôi (nhập tên máy in), không cần RawBT.
+- App Android: thêm màn in ẩn (PrintActivity) gửi lệnh in qua Bluetooth SPP.
+
 ## 0.19.0 — 01/11/2026
 - Máy in Bluetooth tự kết nối lại: mở lại app, quay lại app từ nền, hoặc máy in tắt/bật lại thì app tự tìm đúng máy in đã ghép trước đó (không cần chọn lại). Nếu điện thoại không cho tự kết nối, màn bán hàng và sơ đồ bàn hiện dòng "Máy in chưa kết nối — chạm để kết nối lại" (một chạm, danh sách chỉ còn đúng máy in đó). Trạng thái kết nối hiện trong ☰ › Máy in.
 

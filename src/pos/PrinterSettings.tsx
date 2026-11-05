@@ -1,7 +1,7 @@
 // Printer setup on this phone: connection type, paper width, automatic printing, test print.
 import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
-import { bleSupported, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, printerSettings, reconnectWithTap, renderDoc, savePrinter, usePrinterLink } from '../lib/printer';
+import { bleSupported, isSunmi, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, printerSettings, reconnectWithTap, renderDoc, savePrinter, usePrinterLink } from '../lib/printer';
 import { preBillDoc, qrBillDoc, receiptDoc } from '../lib/receipts';
 import { navigate, toast, useStore } from '../lib/store';
 import { Icon, Segmented, Sheet, TopBar } from '../ui';
@@ -62,7 +62,27 @@ export default function PrinterSettings() {
       <TopBar title="Máy in" sub={`Cài riêng cho ${cfg.device.name}`} onBack={() => navigate('order')} />
       <div className="scroll pad col gap16">
         <div className="section-title" style={{ marginTop: 0 }}>Kết nối</div>
-        <Segmented value={p.mode} onChange={(v) => update({ mode: v })} options={[['none', 'Không in'], ['ble', 'Bluetooth'], ['rawbt', 'Qua app RawBT']]} />
+        <Segmented value={p.mode} onChange={(v) => update({ mode: v, ...(v === 'app' && isSunmi() ? { paper: 58 } : {}) })}
+          options={[['none', 'Không in'], ['app', isSunmi() ? 'Máy in Sunmi' : 'Qua app Dui POS'], ['ble', 'Bluetooth'], ['rawbt', 'RawBT']]} />
+        {isSunmi() && p.mode !== 'app' && (
+          <button className="banner ok" style={{ border: 0, width: '100%', textAlign: 'left' }} onClick={() => update({ mode: 'app', paper: 58, appPrinter: '' })}>
+            <Icon name="printer" size={18} /><span>Máy này là <b>SUNMI</b> có máy in sẵn. Chạm để dùng máy in của máy.</span>
+          </button>
+        )}
+        {p.mode === 'app' && (
+          <div className="card col gap12">
+            <b>{isSunmi() ? 'Máy in có sẵn trong máy SUNMI' : 'In qua app Dui POS'}</b>
+            <ol className="small muted" style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <li>Cài app <b>Dui POS</b> (APK) trên máy này — bản mới nhất có sẵn chức năng in. Dùng app hay Chrome đều in được.</li>
+              <li>Bật Bluetooth của máy (máy in SUNMI nằm trong danh sách Bluetooth với tên <b>InnerPrinter</b>, luôn sẵn sàng).</li>
+              <li>Bấm In thử. Lần đầu Android có thể hỏi mở bằng Dui POS: chọn “Luôn luôn”.</li>
+            </ol>
+            <label className="field"><span>Tên máy in (để trống = máy in SUNMI có sẵn)</span>
+              <input className="input" value={p.appPrinter ?? ''} placeholder="InnerPrinter" onChange={(e) => update({ appPrinter: e.target.value.trim() })} />
+            </label>
+            <p className="tiny faint" style={{ margin: 0 }}>Cũng dùng được cho máy in Bluetooth thường đã ghép đôi trong Cài đặt Bluetooth của Android: nhập đúng tên máy in (VD: DM01).</p>
+          </div>
+        )}
         <div className="banner info"><Icon name="printer" size={18} /><span>Máy in <b>DM01 (Bluetooth Mobile Thermal Printer, 58mm)</b>: thử <b>Bluetooth</b> trước. Nếu không thấy máy trong danh sách hoặc báo “không tìm thấy cổng in”, chọn <b>Qua app RawBT</b>.</span></div>
         {p.mode === 'ble' && (
           <div className="card col gap12">
