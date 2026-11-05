@@ -33,7 +33,7 @@ export default function Staff() {
     if (ok) { setE(null); list.reload(); }
   };
   return (
-    <Page title="Nhân viên" right={<button className="btn sm primary" onClick={() => setE({ name: '', role: 'staff', active: 1, max_discount_pct: 0, cash_out_limit: 100000, hourly_rate: 0, pin: '' })}>+ Nhân viên</button>}>
+    <Page title="Nhân viên & tài khoản" right={<button className="btn sm primary" onClick={() => setE({ name: '', role: 'staff', active: 1, max_discount_pct: 0, cash_out_limit: 100000, hourly_rate: 0, pin: '' })}>+ Nhân viên</button>}>
       <Loading error={list.error} loading={list.loading && !list.data} />
       <div className="list">
         {(list.data ?? []).map((s) => (
@@ -50,6 +50,12 @@ export default function Staff() {
             <Text label="Tên" value={e.name} onChange={(v) => setE({ ...e, name: v })} />
             <Select label="Vai trò" value={e.role} onChange={(v) => setE({ ...e, role: v as Role })} options={[['staff', 'Nhân viên'], ['manager', 'Quản lý'], ['owner', 'Chủ quán']]} />
             <Text label={(e.id ? 'PIN mới (để trống nếu giữ nguyên) · ' : '') + pinRule(e.role)} type="password" inputMode="numeric" value={e.pin} onChange={(v) => setE({ ...e, pin: v.replace(/\D/g, '').slice(0, 6) })} />
+            {e.role === 'staff' && (
+              <p className="tiny muted" style={{ margin: '-4px 0 0' }}>
+                Nhân viên không cần tài khoản: trên máy bán hàng đã đăng nhập, chọn tên rồi nhập PIN là vào ca. Muốn người này
+                tự đăng nhập máy mới hoặc vào Quản trị, chọn vai trò Quản lý.
+              </p>
+            )}
             {e.role !== 'staff' && (
               <div className="card col gap12">
                 <b className="small">Tài khoản đăng nhập</b>

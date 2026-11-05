@@ -3,6 +3,7 @@ import { APK_URL, inAndroidApp, isAndroid } from './lib/platform';
 import { reconnectWithTap, usePrinterLink } from './lib/printer';
 import { resolvedTheme, setTheme, useTheme } from './lib/theme';
 import { type ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { verifyPin } from '../shared/crypto';
 import type { StaffPublic } from '../shared/types';
 import { parseVnd, vnd } from '../shared/util';
@@ -86,10 +87,13 @@ export function Sheet({ children, onClose, middle }: { children: ReactNode; onCl
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
-  return (
+  // Portal to <body>: an animated ancestor (transform) would otherwise become the containing block of this
+  // position:fixed overlay and push the sheet off-screen (seen on short admin pages, e.g. Nhân viên).
+  return createPortal(
     <div className={'overlay' + (middle ? ' middle' : '')} onClick={onClose}>
       <div className={middle ? 'dialog' : 'sheet'} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">{children}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

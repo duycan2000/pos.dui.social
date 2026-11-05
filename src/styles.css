@@ -528,9 +528,9 @@ table.t tbody tr:hover td { background: var(--surface-2); }
 @keyframes tick { to { transform: rotate(360deg); } }
 
 /* Page enter: every route change mounts a new page, which rises in. */
-.content-inner, .screen > .scroll, .pos-main .grid, .login-panel, .ticket-lines { animation: rise .26s var(--ease) both; }
+.content-inner, .screen > .scroll, .pos-main .grid, .login-panel, .ticket-lines { animation: rise .26s var(--ease) backwards; }
 /* Lists and cards arrive one after another. */
-.list > *, .tabgrid > *, .tablelist > *, .avatars > *, .stats > .stat, .chartgrid > *, .floor > * { animation: rise .32s var(--ease) both; }
+.list > *, .tabgrid > *, .tablelist > *, .avatars > *, .stats > .stat, .chartgrid > *, .floor > * { animation: rise .32s var(--ease) backwards; }
 .list > :nth-child(2), .tabgrid > :nth-child(2), .tablelist > :nth-child(2), .avatars > :nth-child(2), .stats > :nth-child(2), .chartgrid > :nth-child(2), .floor > :nth-child(2) { animation-delay: 30ms; }
 .list > :nth-child(3), .tabgrid > :nth-child(3), .tablelist > :nth-child(3), .avatars > :nth-child(3), .stats > :nth-child(3), .chartgrid > :nth-child(3), .floor > :nth-child(3) { animation-delay: 60ms; }
 .list > :nth-child(4), .tabgrid > :nth-child(4), .tablelist > :nth-child(4), .avatars > :nth-child(4), .stats > :nth-child(4), .chartgrid > :nth-child(4), .floor > :nth-child(4) { animation-delay: 90ms; }
@@ -564,7 +564,7 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 .dot.busy::after, .dot.off::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: ping 1.4s ease-out infinite; }
 
 /* Floor plan: tables with guests breathe; a pre-billed table pings. */
-.tbl.busy { animation: rise .32s var(--ease) both, breathe 3.2s ease-in-out 1s infinite; }
+.tbl.busy { animation: rise .32s var(--ease) backwards, breathe 3.2s ease-in-out 1s infinite; }
 .tbl.bill { position: relative; }
 .tbl.bill::after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--info); animation: ping 2s ease-out infinite; }
 
@@ -583,7 +583,7 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 
 /* Charts: bars grow up from the baseline. */
 .chart .grow { transform-box: fill-box; transform-origin: bottom; animation: grow .55s var(--ease) both; }
-.heatgrid .cell { animation: rise .4s var(--ease) both; }
+.heatgrid .cell { animation: rise .4s var(--ease) backwards; }
 
 /* Brand: one shimmer pass on the login screen. */
 .login-brand .brand { background: linear-gradient(100deg, var(--accent-fg) 0 38%, #fffbe6 50%, var(--accent-fg) 62% 100%) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 2.4s ease-out .3s 1 both; }
@@ -608,7 +608,7 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 .apklink:hover .i-download { animation: feed .5s ease-in-out 2; }
 
 /* ---------- Dui the pug (mascot) ---------- */
-.pug-host { position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 40; display: flex; align-items: flex-end; gap: 4px;
+.pug-host { position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 96px); z-index: 30; display: flex; align-items: flex-end; gap: 4px;
   pointer-events: none; animation: pugIn .6s cubic-bezier(.2, 1.4, .4, 1) both; }
 .pug-host.leaving { animation: pugOut .45s ease-in both; }
 .pug-btn { pointer-events: auto; border: 0; background: none; padding: 0; cursor: pointer; filter: drop-shadow(0 6px 10px rgba(0,0,0,.25)); }

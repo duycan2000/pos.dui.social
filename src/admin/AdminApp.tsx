@@ -31,6 +31,10 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', ['owner']],
     ['admin/tables', 'Sơ đồ bàn', 'Thêm bàn, khu vực, số ghế', 'table', ['owner']],
   ] },
+  { group: 'Nhân sự', items: [
+    ['admin/staff', 'Nhân viên & tài khoản', 'Thêm người, PIN, tài khoản đăng nhập, vai trò', 'users', ['owner']],
+    ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', ['owner', 'manager']],
+  ] },
   { group: 'Kho', items: [
     ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', ['owner', 'manager']],
     ['admin/purchase', 'Nhập hàng', 'Phiếu nhập, ảnh hoá đơn', 'receipt', ['owner', 'manager']],
@@ -46,8 +50,6 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/reports', 'Báo cáo doanh thu', 'Tháng / quý / năm, Excel', 'list', ['owner', 'manager']],
   ] },
   { group: 'Hệ thống', items: [
-    ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', ['owner', 'manager']],
-    ['admin/staff', 'Nhân viên', 'PIN, vai trò, lương giờ', 'users', ['owner']],
     ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', 'phone', ['owner']],
     ['admin/settings', 'Cài đặt', 'VietQR, webhook, cut-off, thuế', 'settings', ['owner']],
     ['admin/audit', 'Nhật ký', 'Huỷ, mời, đổi giá, thu chi', 'clock', ['owner', 'manager']],

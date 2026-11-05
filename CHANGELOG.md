@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.22.0 — 05/11/2026
+- Sửa lỗi lớn: các bảng bật lên (thêm nhân viên, thêm món, sửa bàn, xác nhận…) bị đẩy lệch lên ngoài màn hình trên điện thoại, nhất là ở trang ngắn như Nhân viên, nên trông như không có chức năng thêm. Nguyên nhân: hiệu ứng chuyển trang giữ lại "transform" làm khung cố định bị neo sai. Bảng bật lên giờ luôn hiện đúng ở đáy màn hình.
+- Quản trị: thêm nhóm "Nhân sự" lên đầu, gồm "Nhân viên & tài khoản" (thêm người, PIN, tài khoản đăng nhập, vai trò) và "Giờ làm".
+- Form nhân viên: giải thích rõ nhân viên chỉ cần PIN; quản lý / chủ quán mới có tài khoản đăng nhập.
+- Pug Dui không còn che menu ☰.
+
 ## 0.21.0 — 05/11/2026
 - Bill tự đổi bố cục theo khổ giấy. Khổ 58mm (SUNMI V2 Pro: giấy 58mm, vùng in 48mm = 384 điểm) dùng kiểu gọn: mỗi món 2 dòng ("1. TÊN MÓN (tuỳ chọn)" rồi "SL × đơn giá  -%KM" và thành tiền bên phải), chữ to dễ đọc, không còn bảng 6 cột bị chật. Khổ 80mm giữ bảng 6 cột như mẫu CukCuk.
 - Dòng tổng tiền tự thu nhỏ chữ để không bị xuống dòng trên giấy hẹp.
