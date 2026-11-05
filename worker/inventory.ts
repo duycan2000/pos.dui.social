@@ -1,6 +1,6 @@
 // Inventory: ingredients, recipes, purchases, stocktakes, batch production, costing.
 import { businessDay, parseSettings, ulid } from '../shared/util';
-import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, stmt } from './http';
 
 interface Ingredient {
   id: string; name: string; kind: 'raw' | 'prepared'; base_unit: string; purchase_unit: string; base_per_purchase: number;
@@ -35,7 +35,7 @@ function makeCoster(ings: Ingredient[], recipes: RecipeLine[]) {
 }
 
 export async function listIngredients(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory', 'costing', 'menu');
   const [ings, recipes] = await Promise.all([
     all<Ingredient>(c.env, 'SELECT * FROM ingredient ORDER BY active DESC, name'),
     all<RecipeLine>(c.env, "SELECT * FROM recipe_line WHERE owner_type='ingredient'"),
@@ -50,12 +50,12 @@ export async function listIngredients(c: Ctx) {
 }
 
 export async function getRecipe(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory', 'costing', 'menu');
   return json(await all(c.env, 'SELECT r.*, i.name ingredient_name, i.base_unit FROM recipe_line r JOIN ingredient i ON i.id=r.ingredient_id WHERE r.owner_type=? AND r.owner_id=? ORDER BY r.sort', c.params.type, c.params.id));
 }
 
 export async function setRecipe(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory', 'costing', 'menu');
   const { type, id } = c.params;
   need(['item', 'modifier_option', 'ingredient'].includes(type), 400, 'Loại công thức không hợp lệ');
   const b = await body<{ lines: { ingredient_id: string; qty_base: number }[] }>(c);
@@ -82,7 +82,7 @@ interface PurchaseIn {
 }
 
 export async function createPurchase(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const b = await body<PurchaseIn>(c);
   need(b.lines?.length, 400, 'Phiếu nhập cần ít nhất một dòng');
   need(['drawer', 'bank', 'supplier_debt', 'owner'].includes(b.payment_source), 400, 'Nguồn tiền không hợp lệ');
@@ -142,7 +142,7 @@ export async function createPurchase(c: Ctx) {
 }
 
 export async function listPurchases(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const rows = await all<any>(c.env, 'SELECT p.*, s.name supplier_name, st.name staff_name FROM purchase p LEFT JOIN supplier s ON s.id=p.supplier_id LEFT JOIN staff st ON st.id=p.staff_id ORDER BY p.created_at DESC LIMIT 100');
   if (!rows.length) return json([]);
   const lines = await all<any>(c.env, 'SELECT pl.*, i.name ingredient_name, i.purchase_unit FROM purchase_line pl JOIN ingredient i ON i.id=pl.ingredient_id WHERE pl.purchase_id IN (SELECT id FROM purchase ORDER BY created_at DESC LIMIT 100)');
@@ -151,7 +151,7 @@ export async function listPurchases(c: Ctx) {
 
 /** Low-stock ingredients grouped by supplier, with a suggested quantity back up to 2× the minimum. */
 export async function shoppingList(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const rows = await all<Ingredient & { supplier_name: string | null }>(c.env,
     'SELECT i.*, s.name supplier_name FROM ingredient i LEFT JOIN supplier s ON s.id=i.default_supplier_id WHERE i.active=1 AND i.min_stock_base > 0 AND i.stock_base < i.min_stock_base ORDER BY s.name, i.name');
   const groups = new Map<string, any[]>();
@@ -168,7 +168,7 @@ export async function shoppingList(c: Ctx) {
 // ----- stocktake -----
 
 export async function createStocktake(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const b = await body<{ note?: string; lines: { ingredient_id: string; counted_base: number }[] }>(c);
   need(b.lines?.length, 400, 'Chưa nhập số đếm nào');
   const env = c.env;
@@ -204,12 +204,12 @@ export async function createStocktake(c: Ctx) {
 }
 
 export async function listStocktakes(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   return json(await all(c.env, 'SELECT s.*, st.name staff_name FROM stocktake s LEFT JOIN staff st ON st.id=s.staff_id ORDER BY s.created_at DESC LIMIT 50'));
 }
 
 export async function getStocktake(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const head = await first(c.env, 'SELECT * FROM stocktake WHERE id=?', c.params.id);
   need(head, 404, 'Không tìm thấy');
   const lines = await all(c.env, 'SELECT l.*, i.name, i.base_unit FROM stocktake_line l JOIN ingredient i ON i.id=l.ingredient_id WHERE l.stocktake_id=? ORDER BY l.variance_value', c.params.id);
@@ -219,7 +219,7 @@ export async function getStocktake(c: Ctx) {
 // ----- batch production (syrups, house spirits) -----
 
 export async function produceBatch(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'inventory');
   const b = await body<{ ingredient_id: string; qty_base: number }>(c);
   const env = c.env;
   const [ings, recipes] = await Promise.all([all<Ingredient>(env, 'SELECT * FROM ingredient'), all<RecipeLine>(env, "SELECT * FROM recipe_line WHERE owner_type='ingredient'")]);
@@ -296,7 +296,7 @@ async function costingData(env: Env, bump?: { ingredient_id: string; pct: number
 }
 
 export async function costing(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'costing');
   const o = await outlet(c.env);
   const threshold = parseSettings<{ cost_alert_pct?: number }>(o.settings_json).cost_alert_pct ?? 30;
   const { rows, opts } = await costingData(c.env);
@@ -305,7 +305,7 @@ export async function costing(c: Ctx) {
 
 /** "If vodka goes up 10%": which items change and by how much. */
 export async function simulate(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'costing');
   const b = await body<{ ingredient_id: string; pct: number }>(c);
   const o = await outlet(c.env);
   const threshold = parseSettings<{ cost_alert_pct?: number }>(o.settings_json).cost_alert_pct ?? 30;

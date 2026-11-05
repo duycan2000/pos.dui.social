@@ -2,7 +2,7 @@
 // managers correct entries and plan shifts here. Every correction is written to the audit log.
 import type { TimeEntry } from '../shared/types';
 import { addDays, businessDay, parseSettings, ulid } from '../shared/util';
-import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, stmt } from './http';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,7 +39,7 @@ export async function deviceTimeData(env: Env, today: string) {
 
 /** Timesheet for a period. Pay rates are shown to the owner only. */
 export async function sheet(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const from = c.url.searchParams.get('from') || '';
   const to = c.url.searchParams.get('to') || '';
   need(DAY.test(from) && DAY.test(to) && from <= to, 400, 'Khoảng ngày không hợp lệ');
@@ -71,7 +71,7 @@ function checkTimes(clockIn: number, clockOut: number | null, breakMin: number) 
 }
 
 export async function addEntry(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ staff_id: string; clock_in: number; clock_out: number | null; break_min?: number; note?: string }>(c);
   need(b.staff_id && (await first(c.env, 'SELECT id FROM staff WHERE id=?', b.staff_id)), 400, 'Chọn nhân viên');
   need(b.note?.trim(), 400, 'Ghi lý do thêm công tay');
@@ -89,7 +89,7 @@ export async function addEntry(c: Ctx) {
 }
 
 export async function editEntry(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ clock_in: number; clock_out: number | null; break_min?: number; reason?: string }>(c);
   const before = await first<TimeEntry & { deleted_at: number | null }>(c.env, 'SELECT * FROM time_entry WHERE id=?', c.params.id);
   need(before && !before.deleted_at, 404, 'Không tìm thấy lượt chấm công');
@@ -108,7 +108,7 @@ export async function editEntry(c: Ctx) {
 }
 
 export async function deleteEntry(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ reason?: string }>(c);
   const before = await first<TimeEntry & { deleted_at: number | null }>(c.env, 'SELECT * FROM time_entry WHERE id=?', c.params.id);
   need(before && !before.deleted_at, 404, 'Không tìm thấy lượt chấm công');
@@ -131,7 +131,7 @@ function checkShift(b: { staff_id?: string; day?: string; start?: string; end?: 
 }
 
 export async function addShift(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ staff_id: string; day: string; start: string; end: string; note?: string }>(c);
   checkShift(b);
   const id = ulid();
@@ -141,7 +141,7 @@ export async function addShift(c: Ctx) {
 }
 
 export async function editShift(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ staff_id: string; day: string; start: string; end: string; note?: string }>(c);
   checkShift(b);
   need(await first(c.env, 'SELECT id FROM work_schedule WHERE id=?', c.params.id), 404, 'Không tìm thấy ca');
@@ -150,14 +150,14 @@ export async function editShift(c: Ctx) {
 }
 
 export async function deleteShift(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   await batch(c.env, [stmt(c.env, 'DELETE FROM work_schedule WHERE id=?', c.params.id)]);
   return json({ ok: true });
 }
 
 /** Copy one week of shifts onto another week (7 days). Refuses when the target week already has shifts unless replace=true. */
 export async function copyWeek(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'time');
   const b = await body<{ from: string; to: string; replace?: boolean }>(c);
   need(DAY.test(b.from) && DAY.test(b.to) && b.from !== b.to, 400, 'Tuần không hợp lệ');
   const src = await all<{ staff_id: string; day: string; start: string; end: string; note: string | null }>(c.env,

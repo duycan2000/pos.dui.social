@@ -2,7 +2,7 @@
 import type { TaxInfo } from '../shared/types';
 import { addDays, businessDay, daysBetween, parseSettings } from '../shared/util';
 import { periodSummary } from './finance';
-import { all, type Ctx, type Env, first, json, need, now, requireRole } from './http';
+import { all, type Ctx, type Env, first, json, need, now, requirePerm } from './http';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,7 +22,7 @@ function range(c: Ctx) {
 
 /** Rows for the S1a-HKD book: every paid order (or one line per day), net of promotions; tips are not revenue. */
 export async function s1a(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const { from, to } = range(c);
   const o = await outlet(c.env);
   const info = parseSettings<{ tax_info?: TaxInfo }>(o.settings_json).tax_info ?? {};
@@ -37,7 +37,7 @@ export async function s1a(c: Ctx) {
 // ---------------- charts ----------------
 
 export async function analytics(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const { from, to } = range(c);
   const o = await outlet(c.env);
   const tz = o.tz_offset_min * 60;
@@ -85,7 +85,7 @@ const pc = (n: number) => (Math.round(n * 10) / 10).toString().replace('.', ',')
  * labour cost and unpaid tabs. Thresholds are rules of thumb, explained in each finding.
  */
 export async function insights(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const o = await outlet(c.env);
   const st = parseSettings<{ cost_alert_pct?: number }>(o.settings_json);
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);

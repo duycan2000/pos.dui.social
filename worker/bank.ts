@@ -7,7 +7,7 @@
 import { parseOrderCode } from '../shared/pricing';
 import { addDays, businessDay, ulid } from '../shared/util';
 import { confirmByTransfer } from './sync';
-import { all, auditStmt, batch, body, type Ctx, type Env, first, HttpError, json, need, now, requireRole, stmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, type Env, first, HttpError, json, need, now, requirePerm, stmt } from './http';
 
 function safeEqual(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
@@ -85,13 +85,13 @@ export async function check(c: Ctx) {
 }
 
 export async function listTxns(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'ledger');
   return json(await all(c.env,
     'SELECT b.*, o.short_code order_code, o.total order_total FROM bank_txn b LEFT JOIN sale_order o ON o.id=b.order_id ORDER BY b.created_at DESC LIMIT 200'));
 }
 
 export async function ignoreTxn(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'ledger');
   const b = await body<{ note?: string }>(c);
   await batch(c.env, [
     stmt(c.env, "UPDATE bank_txn SET status='ignored', note=?, updated_at=? WHERE id=? AND status IN ('unmatched','claimed')", b.note || null, now(), c.params.id),
@@ -102,7 +102,7 @@ export async function ignoreTxn(c: Ctx) {
 
 /** Match a transfer by hand to an order that is waiting for payment (wrong note, typo…). */
 export async function matchTxn(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'ledger');
   const b = await body<{ order_code: string }>(c);
   const txn = await first<{ id: string; amount: number; reference: string | null; status: string }>(c.env, 'SELECT id,amount,reference,status FROM bank_txn WHERE id=?', c.params.id);
   need(txn && (txn.status === 'unmatched' || txn.status === 'claimed'), 409, 'Giao dịch đã được xử lý');

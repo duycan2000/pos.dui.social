@@ -5,7 +5,7 @@ import type { ChosenOption, Item } from '../../shared/types';
 import { vnd, vndShort } from '../../shared/util';
 import { mediaUrl } from '../lib/api';
 import { PugSvg, pugEnabled, pugSay, setPugEnabled } from '../pug';
-import { addToCart, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
+import { addToCart, can, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
 import { appVersion, CAT_COLORS, Icon, PrinterBanner, Sheet, ThemeToggle } from '../ui';
 import Ticket from './Ticket';
 
@@ -103,7 +103,7 @@ export default function OrderScreen() {
           {!items.length && (
             <div className="empty"><div className="ico"><Icon name="search" size={26} /></div>
               <div>{cfg.items.length ? 'Không có món' : 'Chưa có món nào'}</div>
-              {!cfg.items.length && isManager(staff) && <button className="btn soft" onClick={() => navigate('admin/menu')}>Thêm món trong Quản trị</button>}
+              {!cfg.items.length && can('menu', staff) && <button className="btn soft" onClick={() => navigate('admin/menu')}>Thêm món trong Quản trị</button>}
             </div>
           )}
           <div className="grid">

@@ -7,7 +7,8 @@ import { createPortal } from 'react-dom';
 import { verifyPin } from '../shared/crypto';
 import type { StaffPublic } from '../shared/types';
 import { parseVnd, vnd } from '../shared/util';
-import { getState, isManager, useStore } from './lib/store';
+import { getState, useStore } from './lib/store';
+import { hasPerm } from '../shared/perms';
 
 const paths: Record<string, ReactNode> = {
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
@@ -189,8 +190,10 @@ export function ApprovalDialog() {
   const [step, setStep] = useState<'reason' | 'pin'>('reason');
   useEffect(() => { setReason(''); setStep(a && !a.reasonRequired && !a.reasons && a.forcePin ? 'pin' : 'reason'); }, [a]);
   if (!a) return null;
-  const selfApprove = isManager(staff) && !a.forcePin;
-  const managers = (cfg?.staff ?? []).filter((s) => s.role !== 'staff' && s.active);
+  const need = a.need ?? 'approve';
+  const allowed = (s: StaffPublic) => (need === 'owner' ? s.role === 'owner' : hasPerm(s, need));
+  const selfApprove = !!staff && allowed(cfg?.staff.find((x) => x.id === staff.id) ?? staff) && !a.forcePin;
+  const managers = (cfg?.staff ?? []).filter((s) => s.active && allowed(s));
   const finish = async (pin: string): Promise<boolean> => {
     for (const m of managers) {
       if (await verifyPin(pin, m.pin_salt, m.pin_hash)) { a.resolve({ approver: m, pin, reason: reason.trim() }); return true; }
@@ -207,7 +210,7 @@ export function ApprovalDialog() {
       <div className="row gap12" style={{ marginBottom: 14 }}>
         <div className="iconbtn" style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}><Icon name="lock" /></div>
         <div className="col" style={{ gap: 2 }}>
-          <h2>{selfApprove ? 'Xác nhận' : 'Quản lý duyệt'}</h2>
+          <h2>{selfApprove ? 'Xác nhận' : need === 'owner' ? 'Chủ quán duyệt' : 'Người có quyền duyệt'}</h2>
           <span className="small muted">{a.title}</span>
         </div>
       </div>

@@ -1,7 +1,8 @@
 // S24 — back office: Shopify-style sidebar on laptop, grouped list on phone. Needs network.
 import { useEffect } from 'react';
 import { setStaffSession } from '../lib/api';
-import { getManagerSession, isManager, navigate, useStore } from '../lib/store';
+import { can, getManagerSession, isManager, navigate, useStore } from '../lib/store';
+import { permsOf, presetName, type Perm } from '../../shared/perms';
 import { runSync } from '../lib/sync';
 import { get } from '../lib/api';
 import { Icon, TopBar } from '../ui';
@@ -24,37 +25,44 @@ import FloorEditor from './FloorEditor';
 import TimeSheet from './TimeSheet';
 
 type Role = 'owner' | 'manager';
-const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, roles: Role[]][] }[] = [
+const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, need: Perm | 'owner'][] }[] = [
   { group: 'Bán hàng', items: [
-    ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', 'tag', ['owner', 'manager']],
-    ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', ['owner', 'manager']],
-    ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', ['owner']],
-    ['admin/tables', 'Sơ đồ bàn', 'Thêm bàn, khu vực, số ghế', 'table', ['owner']],
+    ['admin/menu', 'Menu & món', 'Danh mục, giá, ảnh, hết hàng', 'tag', 'menu'],
+    ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', 'menu'],
+    ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', 'owner'],
+    ['admin/tables', 'Sơ đồ bàn', 'Thêm bàn, khu vực, số ghế', 'table', 'owner'],
   ] },
   { group: 'Nhân sự', items: [
-    ['admin/staff', 'Nhân viên & tài khoản', 'Thêm người, PIN, tài khoản đăng nhập, vai trò', 'users', ['owner']],
-    ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', ['owner', 'manager']],
+    ['admin/staff', 'Nhân viên & tài khoản', 'Thêm người, PIN, tài khoản đăng nhập, vai trò', 'users', 'owner'],
+    ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', 'time'],
   ] },
   { group: 'Kho', items: [
-    ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', ['owner', 'manager']],
-    ['admin/purchase', 'Nhập hàng', 'Phiếu nhập, ảnh hoá đơn', 'receipt', ['owner', 'manager']],
-    ['admin/stocktake', 'Kiểm kê', 'Đếm chai, hao hụt', 'list', ['owner', 'manager']],
-    ['admin/costing', 'Giá vốn', 'Cost %, lãi thật sau BOGO', 'chart', ['owner', 'manager']],
+    ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', 'inventory'],
+    ['admin/purchase', 'Nhập hàng', 'Phiếu nhập, ảnh hoá đơn', 'receipt', 'inventory'],
+    ['admin/stocktake', 'Kiểm kê', 'Đếm chai, hao hụt', 'list', 'inventory'],
+    ['admin/costing', 'Giá vốn', 'Cost %, lãi thật sau BOGO', 'chart', 'costing'],
   ] },
   { group: 'Tài chính', items: [
-    ['admin/analytics', 'Phân tích & cảnh báo', 'Lãi lỗ tuần/tháng, dấu hiệu thất thoát, biểu đồ', 'chart', ['owner', 'manager']],
-    ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ, tip', 'wallet', ['owner', 'manager']],
-    ['admin/ledger', 'Sổ thu chi', 'Lương, mặt bằng, điện nước', 'wallet', ['owner', 'manager']],
-    ['admin/bank', 'Giao dịch ngân hàng', 'Chuyển khoản tự xác nhận', 'bank', ['owner', 'manager']],
-    ['admin/s1a', 'Sổ doanh thu S1a-HKD', 'Mẫu sổ thuế, in / PDF', 'receipt', ['owner', 'manager']],
-    ['admin/reports', 'Báo cáo doanh thu', 'Tháng / quý / năm, Excel', 'list', ['owner', 'manager']],
+    ['admin/analytics', 'Phân tích & cảnh báo', 'Lãi lỗ tuần/tháng, dấu hiệu thất thoát, biểu đồ', 'chart', 'revenue'],
+    ['admin/finance', 'Tổng quan', 'Doanh thu, dòng tiền, lãi lỗ, tip', 'wallet', 'revenue'],
+    ['admin/ledger', 'Sổ thu chi', 'Lương, mặt bằng, điện nước', 'wallet', 'ledger'],
+    ['admin/bank', 'Giao dịch ngân hàng', 'Chuyển khoản tự xác nhận', 'bank', 'ledger'],
+    ['admin/s1a', 'Sổ doanh thu S1a-HKD', 'Mẫu sổ thuế, in / PDF', 'receipt', 'revenue'],
+    ['admin/reports', 'Báo cáo doanh thu', 'Tháng / quý / năm, Excel', 'list', 'revenue'],
   ] },
   { group: 'Hệ thống', items: [
-    ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', 'phone', ['owner']],
-    ['admin/settings', 'Cài đặt', 'VietQR, webhook, cut-off, thuế', 'settings', ['owner']],
-    ['admin/audit', 'Nhật ký', 'Huỷ, mời, đổi giá, thu chi', 'clock', ['owner', 'manager']],
+    ['admin/devices', 'Thiết bị', 'Máy bán hàng, laptop', 'phone', 'owner'],
+    ['admin/settings', 'Cài đặt', 'VietQR, webhook, cut-off, thuế', 'settings', 'owner'],
+    ['admin/audit', 'Nhật ký', 'Huỷ, mời, đổi giá, thu chi', 'clock', 'audit'],
   ] },
 ];
+
+/** Sub-pages that are not in the menu, and which permission they need. */
+const PAGE_NEED: Record<string, Perm | 'owner'> = {
+  item: 'menu', ingredient: 'inventory', purchases: 'inventory', shopping: 'inventory', stocktakes: 'inventory',
+  ...Object.fromEntries(NAV.flatMap((g) => g.items.map((i) => [i[0].slice(6), i[4]]))),
+};
+const allowed = (need: Perm | 'owner', role: Role) => (need === 'owner' ? role === 'owner' : can(need));
 
 export default function AdminApp({ route }: { route: string }) {
   const staff = useStore((s) => s.staff)!;
@@ -81,7 +89,7 @@ export default function AdminApp({ route }: { route: string }) {
       <aside className="admin-side" aria-label="Quản trị">
         <button className="navitem" onClick={() => navigate('order')}><Icon name="back" />Về màn bán hàng</button>
         {NAV.map((g) => {
-          const items = g.items.filter((i) => i[4].includes(role));
+          const items = g.items.filter((i) => allowed(i[4], role));
           if (!items.length) return null;
           return (
             <div key={g.group} className="col" style={{ gap: 2 }}>
@@ -95,7 +103,7 @@ export default function AdminApp({ route }: { route: string }) {
           );
         })}
       </aside>
-      <div className="admin-main">{renderPage(page, id, role)}</div>
+      <div className="admin-main">{page && PAGE_NEED[page] && !allowed(PAGE_NEED[page], role) ? <NoAccess /> : renderPage(page, id, role)}</div>
     </div>
   );
 }
@@ -130,13 +138,25 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
   return <Home role={role} />;
 }
 
+function NoAccess() {
+  return (
+    <>
+      <TopBar title="Chưa có quyền" onBack={() => navigate('admin')} />
+      <div className="content"><div className="content-inner">
+        <div className="banner danger"><Icon name="lock" size={18} /><span>Bạn chưa được cấp quyền xem trang này. Nhờ chủ quán cấp trong Quản trị › Nhân viên & tài khoản › Phân quyền.</span></div>
+      </div></div>
+    </>
+  );
+}
+
 function Home({ role }: { role: Role }) {
   const staff = useStore((s) => s.staff)!;
+  const me = useStore((s) => s.config?.staff.find((x) => x.id === s.staff?.id));
   const people = useLoad(() => get<{ id: string; has_password: number }[]>('/api/admin/staff'));
   const noPassword = people.data && !people.data.find((p) => p.id === staff.id)?.has_password;
   return (
     <>
-      <TopBar title="Quản trị" sub={`${staff.name} · ${role === 'owner' ? 'Chủ quán' : 'Quản lý'}`} onBack={() => navigate('order')} />
+      <TopBar title="Quản trị" sub={`${staff.name} · ${role === 'owner' ? 'Chủ quán' : presetName(role, permsOf(me ?? staff))}`} onBack={() => navigate('order')} />
       <div className="content">
         <div className="content-inner">
           {noPassword && role === 'owner' && (
@@ -145,7 +165,7 @@ function Home({ role }: { role: Role }) {
             </button>
           )}
           {NAV.map((g) => {
-            const items = g.items.filter((i) => i[4].includes(role));
+            const items = g.items.filter((i) => allowed(i[4], role));
             if (!items.length) return null;
             return (
               <div key={g.group}>

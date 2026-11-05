@@ -364,7 +364,7 @@ function AddTable({ area, onClose, onAdded }: { area: string; onClose: () => voi
   const save = async () => {
     setBusy(true);
     try {
-      const session = await getManagerSession('Thêm bàn — nhập PIN chủ quán');
+      const session = await getManagerSession('Thêm bàn — nhập PIN chủ quán', 'owner');
       if (!session) return;
       // Next free cell, leaving a gap between tables like the starter layout.
       const used = new Set<string>();

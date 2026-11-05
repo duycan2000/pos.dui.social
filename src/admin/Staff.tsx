@@ -2,6 +2,7 @@
 // Anyone can get a login account (email/username + password). It signs a new device in; on a signed-in
 // device everyone still picks their name and enters their PIN. Only owner/manager accounts open Quản trị.
 import { useState } from 'react';
+import { PERMS, PRESETS, permsOf, presetName, type Perm } from '../../shared/perms';
 import { passwordRule, pinRule, validLogin, validPassword, validPin } from '../../shared/crypto';
 import type { Role } from '../../shared/types';
 import { vnd } from '../../shared/util';
@@ -10,7 +11,7 @@ import { toast, useStore } from '../lib/store';
 import { Confirm, Icon, Sheet } from '../ui';
 import { Loading, Num, Page, run, Select, Text, Toggle, useLoad } from './common';
 
-interface S { id?: string; name: string; role: Role; active: number; max_discount_pct: number; cash_out_limit: number; hourly_rate?: number; pin?: string; login?: string | null; has_password?: number; password?: string }
+interface S { id?: string; name: string; role: Role; active: number; max_discount_pct: number; cash_out_limit: number; hourly_rate?: number; pin?: string; login?: string | null; has_password?: number; password?: string; perms?: string | null; permsSel?: Perm[] }
 const ROLE: Record<Role, string> = { owner: 'Chủ quán', manager: 'Quản lý', staff: 'Nhân viên' };
 
 /** "Nguyễn Thị Linh" → "linh"; owner can change it. */
@@ -34,13 +35,15 @@ export default function Staff() {
   const list = useLoad(() => get<S[]>('/api/admin/staff'));
   const [e, setE] = useState<S | null>(null);
   const [acct, setAcct] = useState(false); // account section open
+  const [permOpen, setPermOpen] = useState(false); // permissions section open
   const [showPw, setShowPw] = useState(false);
   const [askDel, setAskDel] = useState(false);
   const [askUnlink, setAskUnlink] = useState(false);
   const [creds, setCreds] = useState<{ name: string; login: string; password: string } | null>(null);
   const me = useStore((st) => st.staff?.id);
 
-  const open = (s: S, withAccount = false) => {
+  const open = (s: S, withAccount = false, withPerms = false) => {
+    setPermOpen(withPerms);
     const fresh = withAccount && !s.has_password;
     setE({ ...s, pin: '', password: fresh ? randomPassword() : '', login: s.login || (fresh ? suggestLogin(s.name) : '') });
     setAcct(withAccount || !!s.has_password);
@@ -73,7 +76,8 @@ export default function Staff() {
     if (!e?.name.trim()) return;
     if (e.pin && !validPin(e.pin, e.role)) return;
     const account = acct ? { login: (e.login || '').trim(), password: e.password || undefined } : {};
-    const body = { name: e.name, role: e.role, active: e.active, max_discount_pct: e.max_discount_pct, cash_out_limit: e.cash_out_limit, hourly_rate: Math.round(e.hourly_rate || 0), pin: e.pin || undefined, ...account };
+    const body = { name: e.name, role: e.role, active: e.active, max_discount_pct: e.max_discount_pct, cash_out_limit: e.cash_out_limit, hourly_rate: Math.round(e.hourly_rate || 0), pin: e.pin || undefined, ...account,
+      ...(e.permsSel && e.role !== 'owner' ? { perms: e.permsSel } : {}) };
     const ok = await run(() => (e.id ? put(`/api/admin/staff/${e.id}`, body) : post('/api/admin/staff', body)), 'Đã lưu nhân viên');
     if (ok) {
       if (acct && e.password) setCreds({ name: e.name, login: (e.login || '').trim().toLowerCase(), password: e.password });
@@ -98,6 +102,11 @@ export default function Staff() {
               <b>{s.name}</b>
               <span className="small muted">{ROLE[s.role]}{s.hourly_rate ? ` · ${vnd(s.hourly_rate)}/giờ` : ''} · chi két tối đa {vnd(s.cash_out_limit)}{s.active ? '' : ' · đã khoá'}</span>
               {s.has_password ? <span className="tiny" style={{ color: 'var(--ok)' }}><Icon name="check" size={12} /> Tài khoản: <b>{s.login}</b></span> : null}
+              {s.role === 'owner' ? <span className="tiny muted"><Icon name="lock" size={12} /> Toàn quyền</span> : (
+                <button className="permchip" onClick={(ev) => { ev.stopPropagation(); open(s, false, true); }}>
+                  <Icon name="lock" size={12} /> Phân quyền: <b>{presetName(s.role, permsOf(s))}</b> ›
+                </button>
+              )}
             </span>
             {!s.has_password && (
               <button className="btn sm soft" onClick={(ev) => { ev.stopPropagation(); open(s, true); }}>+ Tạo tài khoản</button>
@@ -149,6 +158,47 @@ export default function Staff() {
                 )}
               </div>
             )}
+
+            {e.role === 'owner' ? (
+              <div className="card small muted"><Icon name="lock" size={14} /> Chủ quán có toàn quyền.</div>
+            ) : (() => {
+              const cur = e.permsSel ?? permsOf({ role: e.role, perms: e.perms });
+              const setSel = (v: Perm[]) => setE({ ...e, permsSel: v });
+              return !permOpen ? (
+                <button className="btn soft" style={{ justifyContent: 'space-between' }} onClick={() => setPermOpen(true)}>
+                  <span className="row" style={{ gap: 8 }}><Icon name="lock" size={18} />Phân quyền</span><b>{presetName(e.role, cur)} ›</b>
+                </button>
+              ) : (
+                <div className="card col gap12">
+                  <div className="row" style={{ justifyContent: 'space-between' }}>
+                    <b className="small">Phân quyền · {presetName(e.role, cur)}</b>
+                    <button className="btn ghost sm" onClick={() => setPermOpen(false)}>Thu gọn</button>
+                  </div>
+                  <span className="tiny muted" style={{ marginTop: -6 }}>Chọn nhanh một loại, rồi bật/tắt từng quyền nếu cần. Bán hàng, thu tiền và chấm công thì ai cũng làm được.</span>
+                  <div className="presets">
+                    {PRESETS.map((p) => {
+                      const on = [...p.perms].sort().join() === [...cur].sort().join();
+                      return (
+                        <button key={p.key} className={'preset' + (on ? ' on' : '')} onClick={() => setSel([...p.perms])}>
+                          <b>{p.label}</b><span>{p.sub}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="col" style={{ gap: 0 }}>
+                    {PERMS.map((p) => (
+                      <label key={p.key} className="permrow">
+                        <span className="grow col" style={{ gap: 1 }}><b className="small">{p.label}</b><span className="tiny muted">{p.sub}</span></span>
+                        <input type="checkbox" className="switch" checked={cur.includes(p.key)}
+                          onChange={(ev) => setSel(ev.target.checked ? [...cur, p.key] : cur.filter((k) => k !== p.key))} />
+                      </label>
+                    ))}
+                  </div>
+                  <span className="tiny faint">Luôn chỉ chủ quán: nhân viên & tài khoản, thiết bị, cài đặt, đổi giá, khuyến mãi, sơ đồ bàn.
+                    {cur.includes('approve') && e.pin && e.pin.length < 6 ? ' Người có quyền duyệt nên dùng PIN 6 số.' : ''}</span>
+                </div>
+              );
+            })()}
 
             <Num label="Lương giờ (₫/giờ, chỉ chủ quán thấy)" value={e.hourly_rate ?? 0} onChange={(v) => setE({ ...e, hourly_rate: Math.round(v) })} />
             <Num label="Hạn mức chi két không cần duyệt (₫)" value={e.cash_out_limit} onChange={(v) => setE({ ...e, cash_out_limit: Math.round(v) })} />

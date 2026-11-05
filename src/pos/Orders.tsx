@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
 import { fmtDay, hhmm, vnd } from '../../shared/util';
 import { outbox } from '../lib/db';
-import { isManager, navigate, staffName, today, useStore, orderTitle } from '../lib/store';
+import { can, navigate, staffName, today, useStore, orderTitle } from '../lib/store';
 import { Empty, Segmented, TopBar } from '../ui';
 
 const METHOD: Record<string, string> = { cash: 'Tiền mặt', vietqr: 'VietQR', card: 'Thẻ' };
@@ -23,7 +23,7 @@ export default function Orders() {
   const [unsynced, setUnsynced] = useState<Set<string>>(new Set());
   useEffect(() => { outbox.all().then((r) => setUnsynced(new Set(r.filter((x) => x.type === 'order').map((x) => x.id)))); }, [pendingFlag, orders]);
   const day = today();
-  const mine = isManager(staff) ? orders : orders.filter((o) => o.staff_id === staff.id);
+  const mine = can('orders_all', staff) ? orders : orders.filter((o) => o.staff_id === staff.id);
   const todays = mine.filter((o) => o.business_day === day || o.status === 'awaiting_payment' || o.status === 'open');
   const list = todays.filter((o) => f === 'all' || o.status === f);
   const paidSum = todays.filter((o) => o.status === 'paid' && o.business_day === day).reduce((s, o) => s + o.total, 0);
@@ -31,7 +31,7 @@ export default function Orders() {
 
   return (
     <div className="screen wide">
-      <TopBar title="Đơn hôm nay" sub={`${fmtDay(day)} · ${isManager(staff) ? 'tất cả máy' : 'của bạn'} · đã thu ${vnd(paidSum)}`} onBack={() => navigate('order')} />
+      <TopBar title="Đơn hôm nay" sub={`${fmtDay(day)} · ${can('orders_all', staff) ? 'tất cả máy' : 'của bạn'} · đã thu ${vnd(paidSum)}`} onBack={() => navigate('order')} />
       <div className="scroll pad col gap12" style={{ maxWidth: 900, margin: '0 auto', width: '100%' }}>
         <Segmented value={f} onChange={setF} options={[['all', 'Tất cả'], ['paid', `Đã TT`], ['awaiting_payment', `Chờ CK ${cnt('awaiting_payment') || ''}`], ['open', `Tab ${cnt('open') || ''}`], ['void', 'Huỷ']]} />
         {!list.length && <Empty>Chưa có đơn</Empty>}

@@ -1,6 +1,6 @@
 // Finance: dashboard (cash flow and P&L kept separate), cash book, revenue reports for tax.
 import { addDays, businessDay, daysBetween, parseSettings, ulid } from '../shared/util';
-import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, requireRole, stmt } from './http';
 
 async function outlet(env: Env) {
   return (await first<{ tz_offset_min: number; business_day_cutoff: string; settings_json: string }>(env, 'SELECT tz_offset_min,business_day_cutoff,settings_json FROM outlet LIMIT 1'))!;
@@ -52,7 +52,7 @@ export async function periodSummary(env: Env, from: string, to: string) {
 }
 
 export async function dashboard(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const o = await outlet(c.env);
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);
   const { from, to } = range(c, today);
@@ -80,7 +80,7 @@ export async function dashboard(c: Ctx) {
 const LEDGER_CATEGORIES = ['purchase', 'salary', 'rent', 'utilities', 'marketing', 'bank_fee', 'repair', 'supplies', 'other_out', 'other_in', 'owner_capital'];
 
 export async function listLedger(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'ledger');
   const o = await outlet(c.env);
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);
   const { from, to } = range(c, today);
@@ -92,7 +92,7 @@ export async function listLedger(c: Ctx) {
 }
 
 export async function addLedger(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'ledger');
   const b = await body<{ business_day?: string; direction: 'in' | 'out'; category: string; amount: number; source: string; note?: string; photo_key?: string }>(c);
   need(['in', 'out'].includes(b.direction), 400, 'Chiều tiền không hợp lệ');
   need(LEDGER_CATEGORIES.includes(b.category), 400, 'Danh mục không hợp lệ');
@@ -133,7 +133,7 @@ function csvCell(v: unknown) {
 }
 
 export async function revenueReport(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const o = await outlet(c.env);
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);
   const { from, to } = range(c, today);
@@ -172,7 +172,7 @@ export async function revenueReport(c: Ctx) {
 
 /** Year-to-date revenue against the configured threshold (verify the threshold with the accountant). */
 export async function ytd(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'revenue');
   const o = await outlet(c.env);
   const today = businessDay(now(), o.tz_offset_min, o.business_day_cutoff);
   const year = today.slice(0, 4);

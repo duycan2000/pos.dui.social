@@ -2,25 +2,26 @@
 import { hashPin, normalizeLogin, passwordRule, pinRule, randomHex, validLogin, validPassword, validPin } from '../shared/crypto';
 import type { Role } from '../shared/types';
 import { ulid } from '../shared/util';
-import { all, auditStmt, batch, body, type Ctx, first, HttpError, json, need, now, requireRole, stmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, first, HttpError, json, need, now, requireAdmin, requirePerm, requireRole, stmt } from './http';
+import { ALL_PERMS, type Perm } from '../shared/perms';
 
-interface TableDef { cols: string[]; roles: Role[]; order: string; soft: boolean }
+interface TableDef { cols: string[]; roles: Role[]; perms?: Perm[]; order: string; soft: boolean }
 
 const TABLES: Record<string, TableDef> = {
-  category: { cols: ['name_en', 'name_vi', 'sort', 'active'], roles: ['owner', 'manager'], order: 'sort', soft: true },
-  item: { cols: ['category_id', 'name_en', 'name_vi', 'desc_en', 'desc_vi', 'price', 'image_key', 'active', 'sold_out', 'show_on_web', 'sort'], roles: ['owner', 'manager'], order: 'sort, name_vi', soft: true },
-  modifier_group: { cols: ['name_en', 'name_vi', 'selection', 'required', 'sort'], roles: ['owner', 'manager'], order: 'sort', soft: false },
-  modifier_option: { cols: ['group_id', 'name_en', 'name_vi', 'price_delta', 'is_default', 'excludes_promo', 'sort', 'active'], roles: ['owner', 'manager'], order: 'sort', soft: true },
+  category: { cols: ['name_en', 'name_vi', 'sort', 'active'], roles: ['owner'], perms: ['menu'], order: 'sort', soft: true },
+  item: { cols: ['category_id', 'name_en', 'name_vi', 'desc_en', 'desc_vi', 'price', 'image_key', 'active', 'sold_out', 'show_on_web', 'sort'], roles: ['owner'], perms: ['menu'], order: 'sort, name_vi', soft: true },
+  modifier_group: { cols: ['name_en', 'name_vi', 'selection', 'required', 'sort'], roles: ['owner'], perms: ['menu'], order: 'sort', soft: false },
+  modifier_option: { cols: ['group_id', 'name_en', 'name_vi', 'price_delta', 'is_default', 'excludes_promo', 'sort', 'active'], roles: ['owner'], perms: ['menu'], order: 'sort', soft: true },
   promotion: { cols: ['name', 'type', 'active', 'start_date', 'end_date', 'days_of_week', 'time_from', 'time_to', 'rule_json'], roles: ['owner'], order: 'name', soft: true },
-  supplier: { cols: ['name', 'phone', 'note', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
+  supplier: { cols: ['name', 'phone', 'note', 'active'], roles: ['owner'], perms: ['inventory'], order: 'name', soft: true },
   dining_table: { cols: ['area', 'name', 'seats', 'x', 'y', 'w', 'h', 'shape', 'sort', 'active'], roles: ['owner'], order: 'area, sort, name', soft: true },
-  ingredient: { cols: ['name', 'kind', 'base_unit', 'purchase_unit', 'base_per_purchase', 'yield_pct', 'avg_cost_per_base', 'min_stock_base', 'recipe_yield_base', 'default_supplier_id', 'active'], roles: ['owner', 'manager'], order: 'name', soft: true },
+  ingredient: { cols: ['name', 'kind', 'base_unit', 'purchase_unit', 'base_per_purchase', 'yield_pct', 'avg_cost_per_base', 'min_stock_base', 'recipe_yield_base', 'default_supplier_id', 'active'], roles: ['owner'], perms: ['inventory', 'costing', 'menu'], order: 'name', soft: true },
 };
 
 function def(c: Ctx): TableDef {
   const d = TABLES[c.params.table];
   need(d, 404, 'Bảng không tồn tại');
-  requireRole(c, ...d.roles);
+  if (d.perms) requirePerm(c, ...d.perms); else requireRole(c, ...d.roles);
   return d;
 }
 
@@ -104,12 +105,12 @@ export async function remove(c: Ctx) {
 // ----- links -----
 
 export async function getItemGroups(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'menu');
   return json(await all(c.env, 'SELECT group_id FROM item_modifier_group WHERE item_id=? ORDER BY sort', c.params.id));
 }
 
 export async function setItemGroups(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'menu');
   const b = await body<{ groupIds: string[] }>(c);
   await batch(c.env, [
     stmt(c.env, 'DELETE FROM item_modifier_group WHERE item_id=?', c.params.id),
@@ -120,7 +121,7 @@ export async function setItemGroups(c: Ctx) {
 }
 
 export async function getPromoItems(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'menu');
   return json(await all(c.env, 'SELECT item_id FROM promotion_item WHERE promotion_id=?', c.params.id));
 }
 
@@ -138,18 +139,18 @@ export async function setPromoItems(c: Ctx) {
 
 // ----- staff -----
 
-const STAFF_SAFE = 'id,name,role,active,max_discount_pct,cash_out_limit,created_at,updated_at';
+const STAFF_SAFE = 'id,name,role,active,max_discount_pct,cash_out_limit,perms,created_at,updated_at';
 /** The owner also sees pay rates. */
 const staffCols = (c: Ctx) => (c.staff?.role === 'owner' ? STAFF_SAFE + ',hourly_rate,login,(pw_hash IS NOT NULL) AS has_password' : STAFF_SAFE + ',(pw_hash IS NOT NULL) AS has_password');
 
 export async function listStaff(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requireAdmin(c);
   return json(await all(c.env, `SELECT ${staffCols(c)} FROM staff WHERE deleted_at IS NULL ORDER BY active DESC, role, name`));
 }
 
 export async function saveStaff(c: Ctx) {
   requireRole(c, 'owner');
-  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number; login?: string | null; password?: string }>(c);
+  const b = await body<{ name?: string; role?: Role; pin?: string; active?: number; max_discount_pct?: number; cash_out_limit?: number; hourly_rate?: number; login?: string | null; password?: string; perms?: Perm[] | null }>(c);
   if (b.hourly_rate !== undefined) need(Number.isInteger(b.hourly_rate) && b.hourly_rate >= 0 && b.hourly_rate <= 10_000_000, 400, 'Lương giờ không hợp lệ');
   const id = c.params.id || ulid();
   const existing = c.params.id ? await first<{ role: Role; active: number }>(c.env, 'SELECT role,active FROM staff WHERE id=? AND deleted_at IS NULL', id) : null;
@@ -159,6 +160,12 @@ export async function saveStaff(c: Ctx) {
     const owners = await first<{ n: number }>(c.env, "SELECT COUNT(*) n FROM staff WHERE role='owner' AND active=1");
     need((owners?.n || 0) > 1, 409, 'Phải còn ít nhất một chủ quán');
   }
+  // Custom permissions: an array of keys; null = the role's defaults. Owner always has everything.
+  let permsJson: string | null | undefined;
+  if (b.perms !== undefined) {
+    need(b.perms === null || (Array.isArray(b.perms) && b.perms.every((p) => ALL_PERMS.includes(p))), 400, 'Quyền không hợp lệ');
+    permsJson = b.perms === null ? null : JSON.stringify(ALL_PERMS.filter((p) => b.perms!.includes(p)));
+  }
   const t = now();
   const stmts: D1PreparedStatement[] = [];
   if (!existing) {
@@ -166,8 +173,8 @@ export async function saveStaff(c: Ctx) {
     need(b.pin && validPin(b.pin, b.role), 400, pinRule(b.role!));
     const salt = randomHex(8);
     const outlet = await first<{ id: string }>(c.env, 'SELECT id FROM outlet LIMIT 1');
-    stmts.push(stmt(c.env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,hourly_rate,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)',
-      id, outlet!.id, b.name!.trim(), salt, await hashPin(b.pin, salt), b.role, b.max_discount_pct ?? 0, b.cash_out_limit ?? 100000, b.hourly_rate ?? 0, t, t));
+    stmts.push(stmt(c.env, 'INSERT INTO staff (id,outlet_id,name,pin_salt,pin_hash,role,active,max_discount_pct,cash_out_limit,hourly_rate,perms,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)',
+      id, outlet!.id, b.name!.trim(), salt, await hashPin(b.pin, salt), b.role, b.max_discount_pct ?? 0, b.cash_out_limit ?? 100000, b.hourly_rate ?? 0, permsJson ?? null, t, t));
   } else {
     if (b.role && b.role !== 'staff' && existing.role === 'staff') need(b.pin, 400, 'Đổi lên quản lý cần đặt PIN mới 6 chữ số');
     const sets: string[] = [];
@@ -175,6 +182,7 @@ export async function saveStaff(c: Ctx) {
     for (const k of ['name', 'role', 'active', 'max_discount_pct', 'cash_out_limit', 'hourly_rate'] as const) {
       if (b[k] !== undefined) { sets.push(`${k}=?`); vals.push(b[k]); }
     }
+    if (permsJson !== undefined) { sets.push('perms=?'); vals.push(permsJson); }
     if (b.pin) {
       need(validPin(b.pin, b.role ?? existing.role), 400, pinRule(b.role ?? existing.role));
       const salt = randomHex(8);
@@ -267,7 +275,7 @@ export async function revokeOtherDevices(c: Ctx) {
 const OUTLET_COLS = ['name', 'tz_offset_min', 'business_day_cutoff', 'business_type', 'vietqr_bank_bin', 'vietqr_account', 'vietqr_account_name', 'receipt_header', 'receipt_footer', 'settings_json'];
 
 export async function getOutlet(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requireAdmin(c);
   return json(await first(c.env, 'SELECT * FROM outlet LIMIT 1'));
 }
 
@@ -307,7 +315,7 @@ export async function setDeviceActive(c: Ctx) {
 // ----- audit -----
 
 export async function listAudit(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'audit');
   const action = c.url.searchParams.get('action');
   const limit = Math.min(500, parseInt(c.url.searchParams.get('limit') || '200', 10));
   const rows = action

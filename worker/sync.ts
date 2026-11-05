@@ -4,7 +4,7 @@ import type { CashMovement, DrawerSession, Order, OrderLine, Promotion, Promotio
 import { addDays, businessDay, ulid } from '../shared/util';
 import { configSnapshot } from './auth';
 import { deviceTimeData, pushTimeEntry } from './time';
-import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requireRole, stmt, upsertStmt } from './http';
+import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, stmt, upsertStmt } from './http';
 
 const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at', 'table_id', 'guests', 'prebill_at', 'merged_into'];
 const DRAWER_COLS = ['id', 'outlet_id', 'business_day', 'status', 'opened_by', 'opened_at', 'opening_float', 'opening_count_json', 'device_id', 'note', 'created_at', 'updated_at'];
@@ -305,7 +305,7 @@ export async function getZReport(c: Ctx) {
 
 /** Close the shared drawer. Online only, so every device's cash sales are counted. */
 export async function closeDrawer(c: Ctx) {
-  requireRole(c, 'owner', 'manager');
+  requirePerm(c, 'approve');
   const b = await body<{ counted: Record<string, number>; note?: string }>(c);
   const d = await first<DrawerSession>(c.env, 'SELECT * FROM drawer_session WHERE id=?', c.params.id);
   need(d, 404, 'Không tìm thấy phiên két');

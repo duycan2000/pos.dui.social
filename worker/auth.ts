@@ -141,11 +141,11 @@ export async function resolveDevice(c: Ctx) {
 export async function resolveStaff(c: Ctx) {
   const token = c.req.headers.get('x-staff-session') || '';
   need(token, 401, 'Cần đăng nhập quản trị');
-  const s = await first<{ staff_id: string; expires_at: number; name: string; role: Role; active: number }>(c.env,
-    'SELECT s.staff_id, s.expires_at, st.name, st.role, st.active FROM staff_session s JOIN staff st ON st.id=s.staff_id WHERE s.token_hash=?',
+  const s = await first<{ staff_id: string; expires_at: number; name: string; role: Role; active: number; perms: string | null }>(c.env,
+    'SELECT s.staff_id, s.expires_at, st.name, st.role, st.active, st.perms FROM staff_session s JOIN staff st ON st.id=s.staff_id WHERE s.token_hash=?',
     await sha256(token));
   need(s && s.active && s.expires_at > now(), 401, 'Phiên quản trị đã hết hạn, hãy đăng nhập lại');
-  c.staff = { id: s.staff_id, name: s.name, role: s.role };
+  c.staff = { id: s.staff_id, name: s.name, role: s.role, perms: s.perms };
 }
 
 /** Staff PIN login on the server, giving a session for back-office calls. */
@@ -170,7 +170,7 @@ export async function staffLogin(c: Ctx) {
 export async function configSnapshot(env: Env, device: Ctx['device']): Promise<PosConfig> {
   const [outlet, staff, categories, items, modifierGroups, modifierOptions, itemModifierGroups, promotions, promotionItems, tables] = await Promise.all([
     first(env, 'SELECT * FROM outlet LIMIT 1'),
-    all(env, 'SELECT id,name,role,active,pin_salt,pin_hash,max_discount_pct,cash_out_limit FROM staff WHERE active=1 ORDER BY role, name'),
+    all(env, 'SELECT id,name,role,active,pin_salt,pin_hash,max_discount_pct,cash_out_limit,perms FROM staff WHERE active=1 ORDER BY role, name'),
     all(env, 'SELECT id,name_en,name_vi,sort,active FROM category ORDER BY sort'),
     all(env, 'SELECT id,category_id,name_en,name_vi,desc_en,desc_vi,price,image_key,active,sold_out,show_on_web,sort FROM item ORDER BY sort, name_vi'),
     all(env, 'SELECT id,name_en,name_vi,selection,required,sort FROM modifier_group ORDER BY sort'),

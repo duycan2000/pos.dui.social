@@ -641,3 +641,15 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 
 .printer-banner { width: 100%; border: 0; align-items: center; }
 .printer-banner:empty { display: none; }
+
+/* Permissions (v0.24) */
+.permchip { align-self: flex-start; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text); border-radius: 999px; padding: 3px 10px; font-size: 12px; margin-top: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.permchip:active { transform: scale(.97); }
+.presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.preset { text-align: left; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.preset span { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.preset.on { border-color: var(--accent); background: var(--accent-soft); }
+.preset.on b { color: var(--accent-fg); }
+.permrow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.permrow:first-child { border-top: 0; }
+.permrow input { width: 22px; height: 22px; accent-color: var(--accent); flex-shrink: 0; }

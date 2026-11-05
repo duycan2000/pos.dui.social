@@ -79,7 +79,7 @@ function CountDrawer({ onBack, onClosed }: { onBack: () => void; onClosed: (z: Z
   const close = async () => {
     setBusy(true);
     try {
-      const m = await getManagerSession('Đóng két cần quản lý nhập PIN');
+      const m = await getManagerSession('Đóng két cần quản lý nhập PIN', 'approve');
       if (!m) return;
       const r = await api<ZReport>('POST', `/api/drawer/${drawer.id}/close`, { counted: counts, note: note.trim() || undefined }, { session: m.session });
       const drawers = getState().drawers.map((d) => (d.id === drawer.id ? { ...d, status: 'closed' as const } : d));

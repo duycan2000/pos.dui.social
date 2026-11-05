@@ -2,6 +2,14 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.24.0 — 05/11/2026
+- Phân quyền theo từng người (Quản trị › Nhân viên & tài khoản › nút "Phân quyền" dưới mỗi tên). 9 quyền: xem doanh thu & báo cáo, xem đơn của mọi người, duyệt thay quản lý, sổ thu chi & ngân hàng, sửa menu, kho, giá vốn, giờ làm, nhật ký.
+- 6 loại phân quyền chọn nhanh: Chỉ bán hàng, Trưởng ca, Thu ngân, Pha chế trưởng, Kế toán, Quản lý đầy đủ — chọn xong vẫn bật/tắt từng quyền được.
+- Nhân viên có quyền xem doanh thu / kho / … vào được Quản trị nhưng chỉ thấy đúng các mục được cấp; mở trang khác sẽ báo "Chưa có quyền". Máy chủ kiểm tra lại từng quyền.
+- Duyệt bỏ món, mời, chi két vượt hạn mức, đóng két: ai có quyền "Duyệt thay quản lý" đều duyệt được bằng PIN.
+- Luôn chỉ chủ quán: nhân viên & tài khoản, thiết bị, cài đặt, đổi giá, khuyến mãi, sơ đồ bàn.
+- Quản lý cũ giữ nguyên quyền như trước (mặc định đầy đủ). Migration 0007 thêm cột staff.perms.
+
 ## 0.23.0 — 05/11/2026
 - Nút "+ Tạo tài khoản" cho từng người trong Quản trị › Nhân viên & tài khoản, và nút "Tạo tài khoản đăng nhập" trong form nhân viên. Tự gợi ý tên đăng nhập theo tên (Linh → linh) và tạo mật khẩu ngẫu nhiên dễ đọc (dui-kmpa-4821).
 - Sau khi tạo: màn "Đã tạo tài khoản" hiện tên đăng nhập + mật khẩu, nút "Chép để gửi" cho nhân viên.

@@ -158,6 +158,27 @@ await test('Owner sets logins and passwords (staff too); revoke other devices', 
   assert.equal(page.headers.get('x-robots-tag'), 'noindex, nofollow');
 });
 
+await test('Permissions: staff gets revenue only when the owner grants it', async () => {
+  const st = await call('POST', '/api/admin/staff', { name: 'Kế toán', role: 'staff', pin: '246810' });
+  assert.equal(st.status, 200);
+  const keep = staffSession;
+  const loginAs = async () => { const r = await call('POST', '/api/auth/staff', { staffId: st.body.id, pin: '246810' }); assert.equal(r.status, 200); staffSession = r.body.session; };
+  await loginAs();
+  assert.equal((await call('GET', '/api/fin/dashboard')).status, 403);
+  staffSession = keep;
+  assert.equal((await call('PUT', `/api/admin/staff/${st.body.id}`, { perms: ['revenue', 'nope'] })).status, 400);
+  assert.equal((await call('PUT', `/api/admin/staff/${st.body.id}`, { perms: ['revenue', 'audit'] })).status, 200);
+  staffSession = (await call('POST', '/api/auth/staff', { staffId: st.body.id, pin: '246810' })).body.session;
+  assert.notEqual((await call('GET', '/api/fin/dashboard')).status, 403);
+  assert.equal((await call('GET', '/api/admin/audit')).status, 200);
+  assert.equal((await call('GET', '/api/fin/ledger')).status, 403); // not granted
+  assert.equal((await call('PUT', `/api/admin/staff/${st.body.id}`, { perms: ['ledger'] })).status, 403); // owner-only
+  staffSession = keep;
+  // config carries perms for the till; a manager with a custom set loses the rest
+  const cfg = (await call('GET', '/api/sync/pull')).body.config;
+  assert.equal(JSON.parse(cfg.staff.find((x: any) => x.id === st.body.id).perms).join(), 'revenue,audit');
+});
+
 let itemId = '';
 let vodkaId = '';
 let syrupId = '';

@@ -1,5 +1,6 @@
 // Minimal router and helpers (no framework, so the Worker has zero runtime dependencies).
 import type { Role } from '../shared/types';
+import { canAdmin, hasPerm, type Perm } from '../shared/perms';
 
 export interface Env {
   DB: D1Database;
@@ -15,7 +16,7 @@ export interface Ctx {
   url: URL;
   params: Record<string, string>;
   device?: { id: string; outlet_id: string; order_prefix: string; name: string };
-  staff?: { id: string; name: string; role: Role };
+  staff?: { id: string; name: string; role: Role; perms?: string | null };
 }
 
 export type Handler = (c: Ctx) => Promise<Response> | Response;
@@ -43,6 +44,18 @@ export async function body<T = any>(c: Ctx): Promise<T> {
 
 export function need(cond: unknown, status: number, message: string): asserts cond {
   if (!cond) throw new HttpError(status, message);
+}
+
+/** Owner always; others need at least one of the permissions (shared/perms.ts). */
+export function requirePerm(c: Ctx, ...anyOf: Perm[]) {
+  need(c.staff, 401, 'Cần đăng nhập quản trị');
+  need(hasPerm(c.staff, ...anyOf), 403, 'Bạn chưa được chủ quán cấp quyền này');
+}
+
+/** Any back-office permission (lists every admin page needs, e.g. staff names). */
+export function requireAdmin(c: Ctx) {
+  need(c.staff, 401, 'Cần đăng nhập quản trị');
+  need(canAdmin(c.staff) || hasPerm(c.staff, 'approve'), 403, 'Bạn chưa được chủ quán cấp quyền này');
 }
 
 export function requireRole(c: Ctx, ...roles: Role[]) {

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { hhmm, vnd } from '../../shared/util';
 import { uploadPhoto } from '../lib/api';
-import { addCashMove, isManager, navigate, requestApproval, staffName, toast, useStore } from '../lib/store';
+import { addCashMove, can, navigate, requestApproval, staffName, toast, useStore } from '../lib/store';
 import { Icon, MoneyInput, TopBar } from '../ui';
 
 const REASONS: [string, string][] = [['ice', 'Đá'], ['fruit', 'Trái cây'], ['supplies', 'Vật tư'], ['change', 'Đổi tiền lẻ'], ['other', 'Khác']];
@@ -28,7 +28,7 @@ export default function CashMove() {
   };
   const save = async () => {
     let approvedBy: string | null = null;
-    if (dir === 'out' && !isManager(staff) && amount > staff.cash_out_limit) {
+    if (dir === 'out' && !can('approve', staff) && amount > staff.cash_out_limit) {
       const r = await requestApproval({ title: `Chi ${vnd(amount)} từ két (vượt hạn mức ${vnd(staff.cash_out_limit)})`, reasonRequired: false });
       if (!r) return;
       approvedBy = r.approver.id;

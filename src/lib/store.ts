@@ -10,6 +10,7 @@ import { addDays, businessDay, parseSettings, ulid } from '../../shared/util';
 import { api, setDeviceToken, setStaffSession } from './api';
 import { kv, outbox, table } from './db';
 import { loadPrinter } from './printer';
+import { canAdmin, hasPerm, type Perm } from '../../shared/perms';
 
 export interface Cart {
   id: string;
@@ -30,6 +31,8 @@ export interface Approval {
   reasons?: string[];
   /** Always ask a PIN, even for a logged-in manager (needed to open a server session). */
   forcePin?: boolean;
+  /** Who may approve: a permission (default 'approve') or the owner only. */
+  need?: Perm | 'owner';
   resolve: (r: { approver: StaffPublic; pin: string; reason: string } | null) => void;
 }
 
@@ -82,8 +85,17 @@ export function today(cfg = state.config): string {
 export function settings() {
   return parseSettings<{ done_return_seconds?: number; cost_alert_pct?: number; tax_threshold_year?: number }>(state.config?.outlet.settings_json);
 }
+/** The latest row for a person (permissions may have changed since they logged in). */
+function fresh(s: StaffPublic | null) {
+  return s ? state.config?.staff.find((x) => x.id === s.id) ?? s : null;
+}
+/** Has this permission (shared/perms.ts). Owner: always. */
+export function can(p: Perm, s: StaffPublic | null = state.staff) {
+  return hasPerm(fresh(s), p);
+}
+/** Can open Quản trị (owner, or any back-office permission). */
 export function isManager(s: StaffPublic | null = state.staff) {
-  return !!s && (s.role === 'owner' || s.role === 'manager');
+  return canAdmin(fresh(s));
 }
 export function staffName(id: string | null | undefined) {
   return state.config?.staff.find((s) => s.id === id)?.name ?? '—';
@@ -203,7 +215,7 @@ export async function login(staff: StaffPublic, pin: string): Promise<boolean> {
   setState({ staff, shift: shift && !shift.ended_at ? shift : null, adminSession: null });
   setStaffSession('');
   pickDrawer();
-  if (isManager(staff) && navigator.onLine) {
+  if ((isManager(staff) || can('approve', staff)) && navigator.onLine) {
     api<{ session: string }>('POST', '/api/auth/staff', { staffId: staff.id, pin })
       .then((r) => { setState({ adminSession: r.session }); setStaffSession(r.session); })
       .catch(() => {});
@@ -548,10 +560,11 @@ export async function pruneLocal() {
  * A back-office session on the server for a manager/owner. Uses the logged-in manager's session if there
  * is one; otherwise asks for a manager PIN (S18) and signs that manager in. Needs network.
  */
-export async function getManagerSession(title: string): Promise<{ session: string; approverId: string } | null> {
+export async function getManagerSession(title: string, need?: Perm | 'owner'): Promise<{ session: string; approverId: string } | null> {
   const s = getState();
-  if (isManager(s.staff) && s.adminSession) return { session: s.adminSession, approverId: s.staff!.id };
-  const r = await requestApproval({ title, reasonRequired: false, forcePin: true });
+  const mine = need === 'owner' ? s.staff?.role === 'owner' : need ? can(need) : isManager(s.staff);
+  if (mine && s.adminSession) return { session: s.adminSession, approverId: s.staff!.id };
+  const r = await requestApproval({ title, reasonRequired: false, forcePin: true, need });
   if (!r) return null;
   try {
     const res = await api<{ session: string }>('POST', '/api/auth/staff', { staffId: r.approver.id, pin: r.pin });

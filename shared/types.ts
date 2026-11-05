@@ -65,6 +65,8 @@ export interface StaffPublic {
   pin_hash: string;
   max_discount_pct: number;
   cash_out_limit: number;
+  /** JSON array of permission keys (shared/perms.ts); null = role default. */
+  perms?: string | null;
 }
 
 export interface Category { id: string; name_en: string; name_vi: string; sort: number; active: number }
