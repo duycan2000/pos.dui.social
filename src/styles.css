@@ -211,11 +211,19 @@ hr.sep { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
 .banner.info { background: var(--info-soft); color: var(--info); }
 
 /* ---------- POS shell (Square-style: menu left, ticket right on wide screens) ---------- */
-.pos { height: 100%; display: grid; grid-template-columns: 1fr; }
-.pos-main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+/* Phones: plain flex column, no CSS grid. The Chrome/WebView on handheld POS terminals (SUNMI V2 Pro,
+   Android 7) can be old, and there a 100%-high grid item grows with its content: the whole page scrolled and
+   the "Xem đơn" bar fell below the screen. Header and bar are also sticky, so they stay put even if an old
+   engine still lets the page scroll; only the menu grid scrolls. */
+.pos { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; overflow: hidden; } /* fixed: follows Chrome's toolbar showing/hiding */
+.pos-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.pos-main > .topbar { position: -webkit-sticky; position: sticky; top: 0; z-index: 5; flex-shrink: 0; }
+.pos-main > .ticketbar { position: -webkit-sticky; position: sticky; bottom: 0; z-index: 5; flex-shrink: 0; }
+.pos-main > .scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.pos-main > :not(.scroll) { flex-shrink: 0; }
 .pos-side { display: none; }
 @media (min-width: 980px) {
-  .pos { grid-template-columns: minmax(0, 1fr) 400px; }
+  .pos { display: grid; grid-template-columns: minmax(0, 1fr) 400px; grid-template-rows: 100%; }
   .pos-side { display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); height: 100%; min-height: 0; }
   .pos .phone-only { display: none !important; }
 }
@@ -653,3 +661,16 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 .permrow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
 .permrow:first-child { border-top: 0; }
 .permrow input { width: 22px; height: 22px; accent-color: var(--accent); flex-shrink: 0; }
+
+/* Short screens (SUNMI V2 Pro ≈ 360×600 CSS px): smaller tiles and bars so more drinks fit. */
+@media (max-height: 700px) and (max-width: 979px) {
+  .tile { min-height: 92px; padding: 10px 10px 9px 14px; gap: 4px; }
+  .tile .name { font-size: 15px; }
+  .tile .price { font-size: 16px; }
+  .pos-main .chips { padding-top: 8px; padding-bottom: 8px; }
+  .pos-main .ticketbar { padding-top: 8px; padding-bottom: 8px; }
+  .pos-main .topbar { padding-top: 6px; padding-bottom: 6px; }
+}
+/* Same safety net for the other till screens (đơn, thanh toán, bàn…): bars stay on screen on small/old devices. */
+.screen > .topbar { position: -webkit-sticky; position: sticky; top: 0; z-index: 5; flex-shrink: 0; }
+.screen > .ticket-foot, .screen > .cartbar, .screen > .ticketbar { position: -webkit-sticky; position: sticky; bottom: 0; z-index: 5; flex-shrink: 0; }

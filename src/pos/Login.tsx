@@ -27,7 +27,7 @@ export default function Login() {
         <p className="muted" style={{ margin: 0 }}>{cfg.device.name} · mã đơn {cfg.device.order_prefix}</p>
         <span className="small muted row"><span className={'dot' + (net.online ? '' : ' off')} />{net.online ? 'Đang kết nối' : 'Offline — vẫn bán được'}</span>
         <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => navigate('clock')}><Icon name="clock" size={18} />Chấm công vào / ra ca</button>
-        <span className="tiny faint" aria-label="Phiên bản app">Phiên bản {appVersion(true)}</span>
+        <span className="tiny faint" aria-label="Phiên bản app">Phiên bản {appVersion(true)}{/Chrome\/(\d+)/.exec(navigator.userAgent) ? ` · Chrome ${/Chrome\/(\d+)/.exec(navigator.userAgent)![1]}${/; wv\)/.test(navigator.userAgent) ? ' (WebView)' : ''}` : ''}</span>
         <ApkLink />
       </section>
       <section className="login-panel">

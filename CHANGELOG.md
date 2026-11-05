@@ -2,6 +2,13 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.25.0 — 05/11/2026
+- Màn bán hàng trên máy nhỏ (SUNMI V2 Pro): thanh "Xem đơn" và thanh trên cùng luôn đứng yên, chỉ danh sách món cuộn. Trước đây cả trang bị cuộn và phải kéo xuống mới thấy "Xem đơn".
+- Bố cục điện thoại không còn dùng CSS grid cho khung chính (trình duyệt cũ trên máy POS tính sai chiều cao), khung app cố định theo màn hình kể cả khi thanh địa chỉ Chrome ẩn/hiện.
+- Màn hình thấp (≤ 700px): ô món gọn hơn để thấy nhiều món hơn.
+- Các màn khác (đơn, thanh toán…): thanh trên và nút dưới cũng luôn hiện.
+- Màn đăng nhập hiện phiên bản Chrome/WebView của máy (để chẩn đoán).
+
 ## 0.24.0 — 05/11/2026
 - Phân quyền theo từng người (Quản trị › Nhân viên & tài khoản › nút "Phân quyền" dưới mỗi tên). 9 quyền: xem doanh thu & báo cáo, xem đơn của mọi người, duyệt thay quản lý, sổ thu chi & ngân hàng, sửa menu, kho, giá vốn, giờ làm, nhật ký.
 - 6 loại phân quyền chọn nhanh: Chỉ bán hàng, Trưởng ca, Thu ngân, Pha chế trưởng, Kế toán, Quản lý đầy đủ — chọn xong vẫn bật/tắt từng quyền được.
