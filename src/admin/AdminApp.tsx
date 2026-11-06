@@ -154,6 +154,7 @@ function Home({ role }: { role: Role }) {
   const me = useStore((s) => s.config?.staff.find((x) => x.id === s.staff?.id));
   const people = useLoad(() => get<{ id: string; has_password: number }[]>('/api/admin/staff'));
   const noPassword = people.data && !people.data.find((p) => p.id === staff.id)?.has_password;
+  const lowCount = useStore((s) => s.lowStock?.ingredients.length ?? 0);
   return (
     <>
       <TopBar title="Quản trị" sub={`${staff.name} · ${role === 'owner' ? 'Chủ quán' : presetName(role, permsOf(me ?? staff))}`} onBack={() => navigate('order')} />
@@ -175,6 +176,7 @@ function Home({ role }: { role: Role }) {
                     <button key={r} className="li" onClick={() => navigate(r)}>
                       <span className="iconbtn" style={{ background: 'var(--surface-2)', width: 40, height: 40 }}><Icon name={icon} size={20} /></span>
                       <span className="grow col" style={{ gap: 2 }}><b>{title}</b><span className="small muted">{sub}</span></span>
+                      {r === 'admin/inventory' && lowCount > 0 && <span className="badge danger">{lowCount} sắp hết</span>}
                       <span className="faint"><Icon name="chevron" size={18} /></span>
                     </button>
                   ))}

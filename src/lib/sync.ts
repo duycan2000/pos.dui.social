@@ -1,5 +1,5 @@
 // Outbox sync. Selling never waits for the network: records queue locally and go up when online.
-import type { CashMovement, DrawerSession, Order, PosConfig, StaffShift, TimeEntry, WorkShift } from '../../shared/types';
+import type { CashMovement, DrawerSession, Order, PosConfig, StaffShift, TimeEntry, WorkShift, LowStock } from '../../shared/types';
 import { api, ApiError } from './api';
 import { kv, outbox, table } from './db';
 import { getState, pickDrawer, pruneLocal, refreshPending, setState, setSyncKick } from './store';
@@ -62,7 +62,7 @@ async function pushAll() {
 
 async function pullAll() {
   const since = (await kv.get<number>('cursor')) ?? 0;
-  const r = await api<{ serverTime: number; config: PosConfig; drawers: DrawerSession[]; shifts: StaffShift[]; orders: Order[]; cashMovements: CashMovement[]; timeEntries?: TimeEntry[]; schedule?: WorkShift[] }>(
+  const r = await api<{ serverTime: number; config: PosConfig; drawers: DrawerSession[]; shifts: StaffShift[]; orders: Order[]; cashMovements: CashMovement[]; timeEntries?: TimeEntry[]; schedule?: WorkShift[]; lowStock?: LowStock }>(
     'GET', `/api/sync/pull?since=${since}`,
   );
   const pending = new Set((await outbox.all()).map((x) => x.id));
@@ -79,6 +79,7 @@ async function pullAll() {
   const schedule = r.schedule ?? [];
   await kv.set('timeEntries', timeEntries);
   await kv.set('schedule', schedule);
+  if (r.lowStock) await kv.set('lowStock', r.lowStock);
 
   const orders = r.orders.filter((o) => !pending.has(o.id));
   await table<Order>('orders').putMany(orders);
@@ -100,7 +101,7 @@ async function pullAll() {
   // Refresh the logged-in staff record (role or PIN may have changed).
   const staff = me ? r.config.staff.find((s) => s.id === me.id) ?? null : null;
   setState({
-    config: r.config, drawers, shift, staff: me ? staff : null, timeEntries, schedule,
+    config: r.config, drawers, shift, staff: me ? staff : null, timeEntries, schedule, lowStock: r.lowStock ?? getState().lowStock,
     orders: [...byId.values()].sort((a, b) => b.created_at - a.created_at),
     cashMoves: [...cm.values()],
   });

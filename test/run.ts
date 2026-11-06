@@ -323,6 +323,18 @@ await test('Staff role is kept out of the back office', async () => {
   assert.equal((await call('PUT', `/api/admin/t/item/${itemId}`, { price: 1 })).status, 403);
   staffSession = save;
 });
+await test('Low stock: pull lists ingredients under minimum + affected items; suggest-min', async () => {
+  await call('PUT', `/api/admin/t/ingredient/${vodkaId}`, { min_stock_base: 1e9 });
+  const low = (await call('GET', '/api/sync/pull')).body.lowStock;
+  const v = low.ingredients.find((i: any) => i.id === vodkaId);
+  assert.ok(v, 'vodka is low');
+  assert.ok(Object.keys(low.items).length >= 1, 'items using vodka are flagged');
+  const sug = await call('POST', '/api/inv/suggest-min', { days: 14, cover: 3 });
+  assert.equal(sug.status, 200);
+  assert.ok(Array.isArray(sug.body.rows));
+  assert.equal((await call('POST', '/api/inv/suggest-min', { apply: [{ id: vodkaId, min_stock_base: 1400 }] })).body.saved, 1);
+});
+
 await test('Backup: manual run copies every table into R2 and downloads as NDJSON', async () => {
   let r: any, n = 0;
   do { r = (await call('POST', '/api/admin/backups/run', r ? { name: r.body.name } : {})); assert.equal(r.status, 200); n++; } while (!r.body.done && n < 40);

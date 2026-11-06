@@ -286,3 +286,10 @@ export interface ZReport {
 }
 
 export const DENOMINATIONS = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
+
+/** Ingredients under their minimum level, sent to tills with every pull (v0.27). */
+export interface LowStock {
+  ingredients: { id: string; name: string; stock_base: number; min_stock_base: number; base_unit: string; purchase_unit: string; per_unit: number; out: boolean; days_left: number | null }[];
+  /** Menu items that use a low ingredient: 'out' when one of them is at zero. */
+  items: Record<string, 'low' | 'out'>;
+}

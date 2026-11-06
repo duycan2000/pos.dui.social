@@ -2,6 +2,14 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.27.0 — 07/11/2026
+- Cảnh báo sắp hết hàng: nguyên liệu xuống dưới mức tối thiểu được gửi tới máy bán hàng mỗi lần đồng bộ.
+  - Ô món dùng nguyên liệu đó hiện nhãn "Sắp hết" (hoặc "Hết NL" khi tồn = 0) — vẫn bán được, chỉ để nhân viên biết.
+  - Chủ quán / người có quyền Kho thấy dải cảnh báo trên màn bán hàng (chạm → Cần mua; ẩn được trong ngày).
+  - Báo cáo cuối ca (Z) có mục "Sắp hết hàng" để bàn giao ca sau.
+  - Quản trị: nhãn số món sắp hết cạnh "Tồn kho"; ước tính còn dùng được bao nhiêu ngày theo lượng bán 7 ngày.
+- "Gợi ý mức tối thiểu": app tính lượng dùng trung bình mỗi ngày (7/14/30 ngày) × số ngày cần đủ dùng (2–7 ngày), làm tròn theo đơn vị mua; chọn rồi áp dụng một lần.
+
 ## 0.26.0 — 07/11/2026
 - Sao lưu tự động: mỗi sáng 6:00 (sau khi chốt ngày kinh doanh) máy chủ chép toàn bộ dữ liệu sang kho lưu trữ R2 của quán, giữ 30 bản gần nhất. Chạy từng phần nhỏ để vừa giới hạn gói miễn phí của Cloudflare.
 - Quản trị › Cài đặt › Sao lưu dữ liệu (chỉ chủ quán): xem danh sách bản sao lưu, "Sao lưu ngay", tải về (1 file), xoá.

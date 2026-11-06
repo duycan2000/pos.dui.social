@@ -148,8 +148,26 @@ function ZView({ z }: { z: ZReport }) {
           {row('Đếm được', vnd(z.counted_cash ?? 0))}
           {row('Chênh lệch', vnd(z.difference ?? 0), 'total ' + ((z.difference ?? 0) === 0 ? 'ok' : 'danger'))}
         </div>
+        <LowStockHandover />
       </div>
       <div className="cartbar"><button className="btn primary lg block" onClick={lock}>Đăng xuất</button></div>
+    </div>
+  );
+}
+
+/** Handover note: what is running low, so the next shift / the owner knows what to buy. */
+function LowStockHandover() {
+  const low = useStore((s) => s.lowStock);
+  if (!low?.ingredients.length) return null;
+  return (
+    <div className="card col" style={{ gap: 6 }}>
+      <b className="small" style={{ color: 'var(--danger)' }}>Sắp hết hàng ({low.ingredients.length}) — báo chủ quán / ca sau</b>
+      {low.ingredients.slice(0, 12).map((i) => (
+        <div key={i.id} className="row between small">
+          <span>{i.name}</span>
+          <span className={'mono ' + (i.out ? 'danger' : 'muted')}>{i.out ? 'Hết' : `còn ${Math.round((i.stock_base / i.per_unit) * 10) / 10} ${i.purchase_unit}`}{i.days_left !== null && !i.out ? ` · ~${i.days_left} ngày` : ''}</span>
+        </div>
+      ))}
     </div>
   );
 }

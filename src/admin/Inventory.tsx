@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { fmtDay, vnd } from '../../shared/util';
 import { get, mediaUrl, post, put } from '../lib/api';
 import { navigate, toast } from '../lib/store';
-import { Empty, Icon, MoneyInput } from '../ui';
+import { Empty, Icon, MoneyInput, Sheet } from '../ui';
 import { Loading, Num, Page, PhotoPicker, qty, run, Select, Text, Toggle, useLoad } from './common';
 import RecipeEditor, { useIngredients } from './Recipe';
 
@@ -21,6 +21,7 @@ export function Inventory() {
   const list = useLoad(() => get<Ingredient[]>('/api/inv/ingredients'));
   const [q, setQ] = useState('');
   const [onlyLow, setOnlyLow] = useState(false);
+  const [suggest, setSuggest] = useState(false);
   const rows = (list.data ?? []).filter((i) => (i.active || !onlyLow) && (!onlyLow || i.low) && i.name.toLowerCase().includes(q.toLowerCase()));
   const lowCount = (list.data ?? []).filter((i) => i.low).length;
   const value = (list.data ?? []).reduce((s, i) => s + (i.active ? i.stock_value : 0), 0);
@@ -32,7 +33,14 @@ export function Inventory() {
         <button className="btn sm" onClick={() => navigate('admin/stocktake')}>Kiểm kê</button>
         <button className="btn sm" onClick={() => navigate('admin/stocktakes')}>Lịch sử kiểm kê</button>
         <button className={'btn sm' + (lowCount ? ' danger' : '')} onClick={() => navigate('admin/shopping')}>Cần mua ({lowCount})</button>
+        <button className="btn sm" onClick={() => setSuggest(true)}>Gợi ý mức tối thiểu</button>
       </div>
+      {list.data && list.data.some((i) => i.active) && !list.data.some((i) => i.min_stock_base > 0) && (
+        <button className="banner" style={{ border: 0, textAlign: 'left', width: '100%' }} onClick={() => setSuggest(true)}>
+          <Icon name="warn" size={18} /><span>Chưa đặt mức tối thiểu cho nguyên liệu nào nên app chưa cảnh báo sắp hết được. Chạm để app gợi ý theo lượng bán thực tế.</span>
+        </button>
+      )}
+      {suggest && <SuggestMin onClose={(saved) => { setSuggest(false); if (saved) list.reload(); }} />}
       <div className="row">
         <label className="search grow"><Icon name="search" size={18} /><input placeholder="Tìm nguyên liệu" value={q} onChange={(e) => setQ(e.target.value)} /></label>
         <Toggle label="Sắp hết" checked={onlyLow} onChange={setOnlyLow} />
@@ -54,6 +62,54 @@ export function Inventory() {
         ))}
       </div>
     </Page>
+  );
+}
+
+interface Suggestion { id: string; name: string; base_unit: string; purchase_unit: string; per_unit: number; daily_base: number; stock_base: number; min_stock_base: number; suggest_base: number; suggest_units: number }
+
+/** Minimum levels from real use: average daily use × days until the next delivery, rounded up to whole units. */
+function SuggestMin({ onClose }: { onClose: (saved: boolean) => void }) {
+  const [days, setDays] = useState(14);
+  const [cover, setCover] = useState(3);
+  const [rows, setRows] = useState<Suggestion[] | null>(null);
+  const [pick, setPick] = useState<Set<string>>(new Set());
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    setRows(null);
+    post<{ rows: Suggestion[] }>('/api/inv/suggest-min', { days, cover })
+      .then((r) => { setRows(r.rows); setPick(new Set(r.rows.filter((x) => Math.abs(x.suggest_base - x.min_stock_base) > 1e-6).map((x) => x.id))); })
+      .catch((e) => setErr((e as Error).message));
+  }, [days, cover]);
+  const save = async () => {
+    const apply = (rows ?? []).filter((r) => pick.has(r.id)).map((r) => ({ id: r.id, min_stock_base: r.suggest_base }));
+    if (await run(() => post('/api/inv/suggest-min', { apply }), `Đã đặt mức tối thiểu cho ${apply.length} nguyên liệu`)) onClose(true);
+  };
+  const u = (base: number, r: Suggestion) => Math.round((base / r.per_unit) * 10) / 10;
+  return (
+    <Sheet onClose={() => onClose(false)}>
+      <h2>Gợi ý mức tối thiểu</h2>
+      <p className="small muted" style={{ margin: '4px 0 12px' }}>Dựa trên lượng bán thực tế. Khi tồn kho xuống dưới mức này, app báo "sắp hết" trên máy bán hàng và đưa vào danh sách cần mua.</p>
+      <div className="row wrap" style={{ gap: 12 }}>
+        <Select label="Tính theo" value={String(days)} onChange={(v) => setDays(+v)} options={[['7', '7 ngày qua'], ['14', '14 ngày qua'], ['30', '30 ngày qua']]} />
+        <Select label="Đủ dùng trong" value={String(cover)} onChange={(v) => setCover(+v)} options={[['2', '2 ngày'], ['3', '3 ngày'], ['5', '5 ngày'], ['7', '7 ngày']]} />
+      </div>
+      {err && <div className="banner danger mt8">{err}</div>}
+      {!rows && !err && <div className="small muted mt16">Đang tính…</div>}
+      {rows && !rows.length && <div className="small muted mt16">Chưa có dữ liệu bán hàng trừ kho trong khoảng này. Cần gắn công thức cho món để app biết mỗi ly dùng bao nhiêu.</div>}
+      <div className="col mt8" style={{ gap: 0 }}>
+        {(rows ?? []).map((r) => (
+          <label key={r.id} className="permrow">
+            <span className="grow col" style={{ gap: 1 }}>
+              <b className="small">{r.name}</b>
+              <span className="tiny muted">Dùng ~{u(r.daily_base, r)} {r.purchase_unit}/ngày · tồn {u(r.stock_base, r)} · hiện tối thiểu {r.min_stock_base ? u(r.min_stock_base, r) : '—'}</span>
+            </span>
+            <b className="small mono">{r.suggest_units} {r.purchase_unit}</b>
+            <input type="checkbox" checked={pick.has(r.id)} onChange={(e) => { const n = new Set(pick); if (e.target.checked) n.add(r.id); else n.delete(r.id); setPick(n); }} />
+          </label>
+        ))}
+      </div>
+      <button className="btn primary lg block mt16" disabled={!pick.size} onClick={save}>Đặt mức tối thiểu ({pick.size})</button>
+    </Sheet>
   );
 }
 

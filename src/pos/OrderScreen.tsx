@@ -11,6 +11,7 @@ import Ticket from './Ticket';
 
 export default function OrderScreen() {
   const cfg = useStore((s) => s.config)!;
+  const lowStock = useStore((s) => s.lowStock);
   const cart = useStore((s) => s.cart);
   const staff = useStore((s) => s.staff)!;
   const shift = useStore((s) => s.shift);
@@ -84,7 +85,7 @@ export default function OrderScreen() {
           </div>
         )}
 
-        <div style={{ padding: '8px 16px 0' }}><PrinterBanner /></div>
+        <div style={{ padding: '8px 16px 0' }}><PrinterBanner /><LowStockBanner /></div>
         <nav className="chips" aria-label="Danh mục">
           {cats.map((c) => (
             <button key={c.id} className={'chip' + (!q && c.id === activeCat ? ' on' : '')} onClick={() => { setCat(c.id); setQ(''); }}>
@@ -108,7 +109,7 @@ export default function OrderScreen() {
           )}
           <div className="grid">
             {items.map((it) => (
-              <Tile key={it.id} item={it} color={catColor.get(it.category_id) ?? CAT_COLORS[0]} bogo={promoItems.has(it.id)} qty={inCart.get(it.id) || 0}
+              <Tile key={it.id} item={it} color={catColor.get(it.category_id) ?? CAT_COLORS[0]} bogo={promoItems.has(it.id)} qty={inCart.get(it.id) || 0} stock={lowStock?.items[it.id]}
                 onTap={() => quickAdd(it)} onLong={() => !it.sold_out && setModItem(it)} onMinus={() => { minusItem(it.id); navigator.vibrate?.(8); }} />
             ))}
           </div>
@@ -130,7 +131,7 @@ export default function OrderScreen() {
   );
 }
 
-function Tile({ item, color, bogo, qty, onTap, onLong, onMinus }: { item: Item; color: string; bogo: boolean; qty: number; onTap: () => void; onLong: () => void; onMinus: () => void }) {
+function Tile({ item, color, bogo, qty, stock, onTap, onLong, onMinus }: { item: Item; color: string; bogo: boolean; qty: number; stock?: 'low' | 'out'; onTap: () => void; onLong: () => void; onMinus: () => void }) {
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const long = useRef(false);
   const start = () => { long.current = false; timer.current = setTimeout(() => { long.current = true; onLong(); }, 450); };
@@ -152,7 +153,10 @@ function Tile({ item, color, bogo, qty, onTap, onLong, onMinus }: { item: Item; 
       <span className="name" style={{ paddingRight: qty ? 54 : 0 }}>{item.name_vi}</span>
       <span className="row between" style={{ width: '100%' }}>
         <span className="price">{vndShort(item.price)}</span>
-        {bogo && <span className="badge">1+1</span>}
+        <span className="row" style={{ gap: 4 }}>
+          {stock && <span className={'badge ' + (stock === 'out' ? 'danger' : 'warn')} title="Nguyên liệu dưới mức tối thiểu">{stock === 'out' ? 'Hết NL' : 'Sắp hết'}</span>}
+          {bogo && <span className="badge">1+1</span>}
+        </span>
       </span>
     </button>
     {/* Tap the tile = +1, tap this pill = −1 (undo a double tap). */}
@@ -247,6 +251,26 @@ function MenuDrawer({ onClose, manager, pendingQr, openTabs }: { onClose: () => 
         <span className="tiny faint" style={{ padding: '4px 16px 8px' }}>Dui POS {appVersion()}</span>
       </nav>
       <div className="shade" onClick={onClose} />
+    </div>
+  );
+}
+
+/** Owner / anyone with the Kho permission: ingredients under their minimum (tap → shopping list). Dismiss per day. */
+function LowStockBanner() {
+  const low = useStore((s) => s.lowStock);
+  const staff = useStore((s) => s.staff);
+  const key = 'lowdismiss:' + new Date().toDateString();
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === String(low?.ingredients.length ?? 0); } catch { return false; } });
+  if (!low?.ingredients.length || hidden || !can('inventory', staff)) return null;
+  const top = low.ingredients.slice(0, 3).map((i) => `${i.name}${i.out ? ' (hết)' : i.days_left !== null && i.days_left < 3 ? ` (~${i.days_left} ngày)` : ''}`).join(', ');
+  return (
+    <div className="banner danger" style={{ marginTop: 8, alignItems: 'center' }}>
+      <Icon name="warn" size={18} />
+      <button style={{ border: 0, background: 'none', color: 'inherit', textAlign: 'left', padding: 0, flex: 1, font: 'inherit' }} onClick={() => navigate('admin/shopping')}>
+        <b>{low.ingredients.length} nguyên liệu sắp hết:</b> {top}{low.ingredients.length > 3 ? '…' : ''} <u>Xem cần mua</u>
+      </button>
+      <button className="iconbtn ghost" style={{ width: 30, height: 30, color: 'inherit' }} aria-label="Ẩn hôm nay"
+        onClick={() => { try { localStorage.setItem(key, String(low.ingredients.length)); } catch { /* private mode */ } setHidden(true); }}><Icon name="close" size={14} /></button>
     </div>
   );
 }

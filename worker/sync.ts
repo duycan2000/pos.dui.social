@@ -4,6 +4,7 @@ import type { CashMovement, DrawerSession, Order, OrderLine, Promotion, Promotio
 import { addDays, businessDay, ulid } from '../shared/util';
 import { configSnapshot } from './auth';
 import { deviceTimeData, pushTimeEntry } from './time';
+import { lowStockSnapshot } from './inventory';
 import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, stmt, upsertStmt } from './http';
 
 const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at', 'table_id', 'guests', 'prebill_at', 'merged_into'];
@@ -23,7 +24,7 @@ export async function pull(c: Ctx) {
   const o = await outletInfo(c.env);
   const today = businessDay(serverTime, o.tz_offset_min, o.business_day_cutoff);
   const fromDay = addDays(today, -1);
-  const [config, drawers, shifts, orders, cash, time] = await Promise.all([
+  const [config, drawers, shifts, orders, cash, time, lowStock] = await Promise.all([
     configSnapshot(c.env, c.device),
     all<DrawerSession>(c.env, "SELECT * FROM drawer_session WHERE status='open' OR business_day >= ? ORDER BY opened_at", fromDay),
     all<StaffShift>(c.env, 'SELECT * FROM staff_shift WHERE ended_at IS NULL OR business_day >= ?', fromDay),
@@ -31,8 +32,9 @@ export async function pull(c: Ctx) {
     loadOrders(c.env, "WHERE o.updated_at > ? AND (o.business_day >= ? OR o.status IN ('open','awaiting_payment'))", since, fromDay),
     all<CashMovement>(c.env, 'SELECT * FROM cash_movement WHERE updated_at > ? AND business_day >= ?', since, fromDay),
     deviceTimeData(c.env, today),
+    lowStockSnapshot(c.env),
   ]);
-  return json({ serverTime, config, drawers, shifts, orders, cashMovements: cash, ...time });
+  return json({ serverTime, config, drawers, shifts, orders, cashMovements: cash, ...time, lowStock });
 }
 
 export async function loadOrders(env: Env, where: string, ...args: unknown[]): Promise<Order[]> {

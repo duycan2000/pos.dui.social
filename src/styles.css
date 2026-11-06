@@ -674,3 +674,6 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 /* Same safety net for the other till screens (đơn, thanh toán, bàn…): bars stay on screen on small/old devices. */
 .screen > .topbar { position: -webkit-sticky; position: sticky; top: 0; z-index: 5; flex-shrink: 0; }
 .screen > .ticket-foot, .screen > .cartbar, .screen > .ticketbar { position: -webkit-sticky; position: sticky; bottom: 0; z-index: 5; flex-shrink: 0; }
+
+.badge.warn { background: rgba(245, 158, 11, 0.18); color: #f59e0b; }
+:root[data-theme="light"] .badge.warn { color: #b45309; }

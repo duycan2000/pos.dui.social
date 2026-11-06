@@ -1,5 +1,6 @@
 // Inventory: ingredients, recipes, purchases, stocktakes, batch production, costing.
 import { businessDay, parseSettings, ulid } from '../shared/util';
+import type { LowStock } from '../shared/types';
 import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now, requirePerm, stmt } from './http';
 
 interface Ingredient {
@@ -32,6 +33,58 @@ function makeCoster(ings: Ingredient[], recipes: RecipeLine[]) {
     return v;
   };
   return cost;
+}
+
+/** Low-stock picture for the tills (2 queries; part of every pull). Only ingredients with a minimum set count. */
+export async function lowStockSnapshot(env: Env): Promise<LowStock> {
+  const since = now() - 7 * 86400000;
+  const [ings, items] = await Promise.all([
+    all<{ id: string; name: string; stock_base: number; min_stock_base: number; base_unit: string; purchase_unit: string; base_per_purchase: number; yield_pct: number; used7: number | null }>(env,
+      `SELECT i.id, i.name, i.stock_base, i.min_stock_base, i.base_unit, i.purchase_unit, i.base_per_purchase, i.yield_pct,
+        (SELECT -SUM(m.qty_delta) FROM stock_movement m WHERE m.ingredient_id=i.id AND m.reason='sale' AND m.at > ?) used7
+       FROM ingredient i WHERE i.active=1 AND i.min_stock_base > 0 AND i.stock_base < i.min_stock_base ORDER BY i.stock_base / i.min_stock_base, i.name LIMIT 40`, since),
+    all<{ id: string; out: number }>(env,
+      `SELECT r.owner_id id, MAX(CASE WHEN i.stock_base <= 0 THEN 1 ELSE 0 END) out FROM recipe_line r JOIN ingredient i ON i.id=r.ingredient_id
+       WHERE r.owner_type='item' AND i.active=1 AND i.min_stock_base > 0 AND i.stock_base < i.min_stock_base GROUP BY r.owner_id`),
+  ]);
+  return {
+    ingredients: ings.map((i) => {
+      const daily = (i.used7 ?? 0) / 7;
+      return {
+        id: i.id, name: i.name, stock_base: i.stock_base, min_stock_base: i.min_stock_base, base_unit: i.base_unit, purchase_unit: i.purchase_unit,
+        per_unit: i.base_per_purchase * (i.yield_pct / 100) || 1, out: i.stock_base <= 0,
+        days_left: daily > 0 ? Math.max(0, Math.round((i.stock_base / daily) * 10) / 10) : null,
+      };
+    }),
+    items: Object.fromEntries(items.map((r) => [r.id, r.out ? 'out' : 'low'])),
+  };
+}
+
+/**
+ * Suggested minimum levels from real use: average daily sale use over `days`, times `cover` days
+ * (how long until the next delivery), rounded up to whole purchase units. `apply` saves the chosen ones.
+ */
+export async function suggestMin(c: Ctx) {
+  requirePerm(c, 'inventory');
+  const b = await body<{ days?: number; cover?: number; apply?: { id: string; min_stock_base: number }[] }>(c);
+  if (b.apply?.length) {
+    need(b.apply.length <= 90, 400, 'Tối đa 90 nguyên liệu mỗi lần');
+    const t = now();
+    await batch(c.env, b.apply.map((a) => stmt(c.env, 'UPDATE ingredient SET min_stock_base=?, updated_at=? WHERE id=?', Math.max(0, Number(a.min_stock_base) || 0), t, a.id)));
+    return json({ ok: true, saved: b.apply.length });
+  }
+  const days = Math.min(60, Math.max(3, Math.round(b.days ?? 14)));
+  const cover = Math.min(30, Math.max(1, b.cover ?? 3));
+  const rows = await all<{ id: string; name: string; base_unit: string; purchase_unit: string; base_per_purchase: number; yield_pct: number; stock_base: number; min_stock_base: number; used: number | null }>(c.env,
+    `SELECT i.id, i.name, i.base_unit, i.purchase_unit, i.base_per_purchase, i.yield_pct, i.stock_base, i.min_stock_base,
+      (SELECT -SUM(m.qty_delta) FROM stock_movement m WHERE m.ingredient_id=i.id AND m.reason IN ('sale','batch') AND m.qty_delta < 0 AND m.at > ?) used
+     FROM ingredient i WHERE i.active=1 ORDER BY i.name`, now() - days * 86400000);
+  return json({ days, cover, rows: rows.filter((r) => (r.used ?? 0) > 0).map((r) => {
+    const perUnit = r.base_per_purchase * (r.yield_pct / 100) || 1;
+    const daily = (r.used ?? 0) / days;
+    const units = Math.max(1, Math.ceil((daily * cover) / perUnit));
+    return { id: r.id, name: r.name, base_unit: r.base_unit, purchase_unit: r.purchase_unit, per_unit: perUnit, daily_base: daily, stock_base: r.stock_base, min_stock_base: r.min_stock_base, suggest_base: units * perUnit, suggest_units: units };
+  }) });
 }
 
 export async function listIngredients(c: Ctx) {

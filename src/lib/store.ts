@@ -4,7 +4,7 @@ import { verifyPin } from '../../shared/crypto';
 import { computeTotals, type Totals } from '../../shared/pricing';
 import type {
   AuditEntry, CashMovement, ChosenOption, DiningTable, DrawerSession, Item, Order, OrderLine, Payment, PosConfig, StaffPublic, StaffShift,
-  TimeEntry, WorkShift,
+  TimeEntry, WorkShift, LowStock,
 } from '../../shared/types';
 import { addDays, businessDay, parseSettings, ulid } from '../../shared/util';
 import { api, setDeviceToken, setStaffSession } from './api';
@@ -55,6 +55,8 @@ export interface AppState {
   /** Time clock: open entries and the last two weeks (from the server plus not-yet-pushed local ones). */
   timeEntries: TimeEntry[];
   schedule: WorkShift[];
+  /** Ingredients under their minimum and the menu items that use them (from the last pull). */
+  lowStock: LowStock | null;
 }
 
 const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], customer_label: '', order_type: 'takeaway' });
@@ -62,7 +64,7 @@ const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], cu
 let state: AppState = {
   boot: 'loading', config: null, staff: null, shift: null, drawer: null, drawers: [], cart: newCart(), orders: [], cashMoves: [],
   net: { online: navigator.onLine, busy: false, pending: 0, lastSync: null, lastError: null },
-  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null, timeEntries: [], schedule: [],
+  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null, timeEntries: [], schedule: [], lowStock: null,
 };
 const listeners = new Set<() => void>();
 
@@ -183,8 +185,8 @@ export async function loadLocal() {
     kv.get<PosConfig>('config'), kv.get<DrawerSession[]>('drawers'), table<Order>('orders').all(), table<CashMovement>('cash').all(),
   ]);
   const cart = (await kv.get<Cart>('cart')) || newCart();
-  const [timeEntries, schedule] = await Promise.all([kv.get<TimeEntry[]>('timeEntries'), kv.get<WorkShift[]>('schedule')]);
-  setState({ config: config ?? null, drawers: drawers ?? [], orders: sortOrders(orders), cashMoves: cash, cart, timeEntries: timeEntries ?? [], schedule: schedule ?? [] });
+  const [timeEntries, schedule, lowStock] = await Promise.all([kv.get<TimeEntry[]>('timeEntries'), kv.get<WorkShift[]>('schedule'), kv.get<LowStock>('lowStock')]);
+  setState({ lowStock: lowStock ?? null, config: config ?? null, drawers: drawers ?? [], orders: sortOrders(orders), cashMoves: cash, cart, timeEntries: timeEntries ?? [], schedule: schedule ?? [] });
   pickDrawer();
   await refreshPending();
 }
