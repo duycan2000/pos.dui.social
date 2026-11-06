@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import type { Outlet, OutletSettings } from '../../shared/types';
 import { parseSettings } from '../../shared/util';
-import { get, post, put } from '../lib/api';
+import { del, downloadFile, get, post, put } from '../lib/api';
 import { runSync } from '../lib/sync';
-import { Confirm, Segmented } from '../ui';
+import { Confirm, Icon, Segmented } from '../ui';
 import { pugEnabled, pugSay, setPugEnabled } from '../pug';
 import { setTheme, themeChoice, type ThemeChoice, useTheme } from '../lib/theme';
 import { useStore } from '../lib/store';
@@ -69,6 +69,7 @@ export function Settings() {
       </div>
       <p className="tiny faint" style={{ margin: 0 }}>Sau khi lưu, quét thử mã QR một đơn nhỏ bằng app ngân hàng để chắc chắn đúng tài khoản.</p>
 
+      {owner && <><div className="section-title">Sao lưu dữ liệu</div><Backups /></>}
       {owner && <><div className="section-title">Dữ liệu demo</div><DemoData /></>}
 
       <div className="section-title">Webhook ngân hàng (tự xác nhận chuyển khoản)</div>
@@ -147,6 +148,58 @@ function WebhookHelp() {
         <li>Khách chuyển khoản với nội dung “DUI A012” (đã có sẵn trong mã QR). Tiền vào đủ thì đơn tự chuyển sang Đã thanh toán; chuyển dư được ghi là tip.</li>
       </ol>
       <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => navigator.clipboard?.writeText(url).then(() => run(async () => 1, 'Đã chép URL'))}>Chép URL webhook</button>
+    </div>
+  );
+}
+
+interface BackupRow { name: string; done: number | null; started_at: number; trigger: 'cron' | 'manual'; rows: number; tables: number; progress: number; bytes: number }
+
+/** Nightly backups in R2 (worker/backup.ts): list, back up now, download, delete. */
+function Backups() {
+  const list = useLoad(() => get<BackupRow[]>('/api/admin/backups'));
+  const [busy, setBusy] = useState<number | null>(null);
+  const [askDel, setAskDel] = useState<string | null>(null);
+  const now = async () => {
+    setBusy(0);
+    try {
+      let r = await post<{ name: string; done: boolean; progress: number }>('/api/admin/backups/run');
+      while (!r.done) { setBusy(r.progress); r = await post('/api/admin/backups/run', { name: r.name }); }
+      run(async () => 1, 'Đã sao lưu xong');
+    } catch (e) { run(async () => { throw e; }); }
+    setBusy(null); list.reload();
+  };
+  const label = (b: BackupRow) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:-(\d{2})(\d{2}))?/.exec(b.name);
+    if (!m) return b.name;
+    return `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` lúc ${m[4]}:${m[5]}` : ''}`;
+  };
+  const size = (n: number) => n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+  return (
+    <div className="card col gap12">
+      <span className="small muted">
+        Tự sao lưu toàn bộ dữ liệu (đơn, menu, kho, bảng công…) mỗi sáng lúc 6:00 vào kho lưu trữ riêng của quán, giữ 30 bản gần nhất.
+        Ngoài ra Cloudflare còn tự giữ lịch sử 7 ngày. Tải về để cất thêm một bản trên máy tính hoặc Google Drive.
+      </span>
+      <button className="btn soft" disabled={busy !== null} onClick={now}>
+        {busy !== null ? `Đang sao lưu… ${Math.round(busy * 100)}%` : 'Sao lưu ngay'}
+      </button>
+      <Loading error={list.error} loading={list.loading && !list.data} />
+      {list.data && !list.data.length && <span className="small faint">Chưa có bản sao lưu nào. Bản đầu tiên chạy sáng mai, hoặc bấm Sao lưu ngay.</span>}
+      <div className="list">
+        {(list.data ?? []).map((b) => (
+          <div key={b.name} className="li" style={{ minHeight: 0, padding: '10px 12px' }}>
+            <span className="grow col" style={{ gap: 2 }}>
+              <b className="small">{label(b)} <span className="tiny muted">· {b.trigger === 'cron' ? 'tự động' : 'thủ công'}</span></b>
+              <span className="tiny muted">{b.done ? `${b.rows.toLocaleString('vi-VN')} dòng · ${b.tables} bảng · ${size(b.bytes)}` : `Đang chạy ${Math.round(b.progress * 100)}%`}</span>
+            </span>
+            {b.done && <button className="btn sm" onClick={() => run(() => downloadFile(`/api/admin/backups/${b.name}`, `dui-pos-backup-${b.name}.ndjson`))}>Tải về</button>}
+            <button className="iconbtn ghost" aria-label="Xoá bản sao lưu" onClick={() => setAskDel(b.name)}><Icon name="trash" size={16} /></button>
+          </div>
+        ))}
+      </div>
+      <span className="tiny faint">Khôi phục: gửi file tải về cho người kỹ thuật, chạy scripts/restore-backup.mjs trong mã nguồn (xem README).</span>
+      {askDel && <Confirm title="Xoá bản sao lưu này?" danger okText="Xoá" onCancel={() => setAskDel(null)}
+        onOk={async () => { const n = askDel; setAskDel(null); await run(() => del(`/api/admin/backups/${n}`), 'Đã xoá'); list.reload(); }} text="Không lấy lại được bản này." />}
     </div>
   );
 }

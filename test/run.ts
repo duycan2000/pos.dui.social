@@ -323,6 +323,27 @@ await test('Staff role is kept out of the back office', async () => {
   assert.equal((await call('PUT', `/api/admin/t/item/${itemId}`, { price: 1 })).status, 403);
   staffSession = save;
 });
+await test('Backup: manual run copies every table into R2 and downloads as NDJSON', async () => {
+  let r: any, n = 0;
+  do { r = (await call('POST', '/api/admin/backups/run', r ? { name: r.body.name } : {})); assert.equal(r.status, 200); n++; } while (!r.body.done && n < 40);
+  assert.ok(r.body.done, 'backup finished');
+  const list = (await call('GET', '/api/admin/backups')).body;
+  assert.equal(list[0].name, r.body.name);
+  assert.ok(list[0].rows > 10);
+  const res = await worker.fetch(new Request(`http://x/api/admin/backups/${r.body.name}`, { headers: { authorization: `Bearer ${deviceToken}`, 'x-staff-session': staffSession } }), env);
+  assert.equal(res.status, 200);
+  const lines = (await res.text()).trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(lines[0].t, '_backup');
+  assert.ok(lines.some((l) => l.t === 'item'));
+  assert.ok(!lines.some((l) => l.t === 'staff_session'));
+  // the nightly cron makes its own, named after yesterday's business day
+  for (let k = 0; k < 8; k++) await (worker as any).scheduled({}, env, { waitUntil: async (p: Promise<unknown>) => p });
+  await new Promise((ok) => setTimeout(ok, 50));
+  assert.equal((await call('GET', '/api/admin/backups')).body.length, 2);
+  assert.equal((await call('DELETE', `/api/admin/backups/${r.body.name}`)).status, 200);
+  assert.equal((await call('GET', '/api/admin/backups')).body.length, 1);
+});
+
 await test('Media upload to R2 and serve', async () => {
   const res = await worker.fetch(new Request('https://pos.test/api/media', { method: 'POST', headers: { authorization: 'Bearer ' + deviceToken, 'content-type': 'image/png' }, body: new Uint8Array([137, 80, 78, 71]) }), env);
   const { key } = await res.json() as any;

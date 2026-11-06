@@ -125,3 +125,15 @@ Tách bill theo món/người, đặt bàn trước, giảm giá thủ công, ho
   - Mã băm ghi kèm số vòng, nên sau này lên gói trả phí có thể tăng lên mà không phải đặt lại PIN.
 - Hai máy cùng mở két khi đều offline sẽ tạo hai phiên két; khi có mạng lại, đóng cả hai.
 - Hoá đơn điện tử: hỏi kế toán trước khi doanh thu lũy kế chạm ngưỡng đã cài.
+
+## Backups
+
+- Every morning (06:00–06:55 Vietnam time, cron in `wrangler.jsonc`) the Worker copies every table into R2
+  (`dui-pos-media/backups/<business-day>/`), a page at a time to stay inside the Workers Free limits. The 30 most
+  recent backups are kept. The owner can run one now, download or delete backups in Quản trị › Cài đặt › Sao lưu.
+- D1 also keeps 7 days of Time Travel history: `npx wrangler d1 time-travel restore dui-pos --timestamp=...`.
+- Restore from a downloaded file:
+  ```
+  node scripts/restore-backup.mjs dui-pos-backup-2026-11-06.ndjson > restore.sql
+  npx wrangler d1 execute dui-pos --remote --file restore.sql
+  ```

@@ -25,5 +25,7 @@
       "bucket_name": "dui-pos-media"
     }
   ],
+  // Nightly backup to R2: every 5 minutes 06:00–06:55 Vietnam time (23:xx UTC), after the business day closes.
+  "triggers": { "crons": ["*/5 23 * * *"] },
   "observability": { "enabled": true }
 }

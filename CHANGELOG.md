@@ -2,6 +2,11 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.26.0 — 07/11/2026
+- Sao lưu tự động: mỗi sáng 6:00 (sau khi chốt ngày kinh doanh) máy chủ chép toàn bộ dữ liệu sang kho lưu trữ R2 của quán, giữ 30 bản gần nhất. Chạy từng phần nhỏ để vừa giới hạn gói miễn phí của Cloudflare.
+- Quản trị › Cài đặt › Sao lưu dữ liệu (chỉ chủ quán): xem danh sách bản sao lưu, "Sao lưu ngay", tải về (1 file), xoá.
+- scripts/restore-backup.mjs: chuyển file tải về thành SQL để khôi phục (xem README).
+
 ## 0.25.0 — 05/11/2026
 - Màn bán hàng trên máy nhỏ (SUNMI V2 Pro): thanh "Xem đơn" và thanh trên cùng luôn đứng yên, chỉ danh sách món cuộn. Trước đây cả trang bị cuộn và phải kéo xuống mới thấy "Xem đơn".
 - Bố cục điện thoại không còn dùng CSS grid cho khung chính (trình duyệt cũ trên máy POS tính sai chiều cao), khung app cố định theo màn hình kể cả khi thanh địa chỉ Chrome ẩn/hiện.

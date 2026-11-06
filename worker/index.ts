@@ -2,6 +2,7 @@
 import * as admin from './admin';
 import * as an from './analytics';
 import * as bank from './bank';
+import * as backup from './backup';
 import * as demo from './demo';
 import { registerDevice, resolveDevice, resolveStaff, setup, setupStatus, staffLogin } from './auth';
 import * as fin from './finance';
@@ -42,6 +43,10 @@ const r = new Router()
   .add('GET', '/api/admin/demo', 'staff', demo.status)
   .add('POST', '/api/admin/demo/seed', 'staff', demo.seed)
   .add('POST', '/api/admin/demo/clear', 'staff', demo.clear)
+  .add('GET', '/api/admin/backups', 'staff', backup.list)
+  .add('POST', '/api/admin/backups/run', 'staff', backup.run)
+  .add('GET', '/api/admin/backups/:name', 'staff', backup.download)
+  .add('DELETE', '/api/admin/backups/:name', 'staff', backup.remove)
   .add('GET', '/api/admin/bank-txns', 'staff', bank.listTxns)
   .add('POST', '/api/admin/bank-txns/:id/ignore', 'staff', bank.ignoreTxn)
   .add('POST', '/api/admin/bank-txns/:id/match', 'staff', bank.matchTxn)
@@ -131,5 +136,9 @@ export default {
       console.error(e);
       return json({ error: 'Lỗi máy chủ: ' + (e as Error).message }, 500);
     }
+  },
+  /** Cron (wrangler.jsonc triggers): nightly backup to R2, a few steps per firing. */
+  async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(backup.nightly(env).catch((e) => console.error('backup', e)));
   },
 } satisfies ExportedHandler<Env>;

@@ -38,6 +38,22 @@ export const post = <T = any>(p: string, b?: unknown) => api<T>('POST', p, b ?? 
 export const put = <T = any>(p: string, b?: unknown) => api<T>('PUT', p, b ?? {});
 export const del = <T = any>(p: string) => api<T>('DELETE', p);
 
+/** Download a file from a back-office endpoint (needs our auth headers, so no plain link). */
+export async function downloadFile(path: string, filename: string) {
+  const headers: Record<string, string> = {};
+  if (deviceToken) headers.authorization = 'Bearer ' + deviceToken;
+  if (staffSession) headers['x-staff-session'] = staffSession;
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    const d = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, d.error || `Lỗi ${res.status}`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
 /** Upload a photo to R2. Resized on the phone first so menus and receipts stay small. */
 export async function uploadPhoto(file: File): Promise<string> {
   const blob = await shrink(file, 1280, 0.82);

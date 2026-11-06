@@ -41,14 +41,29 @@ export function makeD1(migrationsDir: string) {
 export function makeR2() {
   const store = new Map<string, { body: Uint8Array; type: string }>();
   return {
-    async put(key: string, body: ReadableStream | ArrayBuffer | null, opts?: { httpMetadata?: { contentType?: string } }) {
+    store,
+    async put(key: string, body: ReadableStream | ArrayBuffer | string | null, opts?: { httpMetadata?: { contentType?: string } }) {
       const buf = body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(await new Response(body as any).arrayBuffer());
       store.set(key, { body: buf, type: opts?.httpMetadata?.contentType || 'application/octet-stream' });
     },
     async get(key: string) {
       const o = store.get(key);
       if (!o) return null;
-      return { body: o.body, writeHttpMetadata: (h: Headers) => h.set('content-type', o.type) };
+      return {
+        body: o.body, writeHttpMetadata: (h: Headers) => h.set('content-type', o.type),
+        text: async () => new TextDecoder().decode(o.body), arrayBuffer: async () => o.body.slice().buffer,
+      };
+    },
+    async delete(keys: string | string[]) { for (const k of Array.isArray(keys) ? keys : [keys]) store.delete(k); },
+    async list(opts: { prefix?: string; delimiter?: string; cursor?: string } = {}) {
+      const prefix = opts.prefix ?? '';
+      const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+      if (opts.delimiter) {
+        const prefixes = new Set<string>(); const objects: { key: string }[] = [];
+        for (const k of keys) { const rest = k.slice(prefix.length); const i = rest.indexOf(opts.delimiter); if (i >= 0) prefixes.add(prefix + rest.slice(0, i + 1)); else objects.push({ key: k }); }
+        return { objects, delimitedPrefixes: [...prefixes], truncated: false };
+      }
+      return { objects: keys.map((key) => ({ key })), delimitedPrefixes: [], truncated: false };
     },
   };
 }
