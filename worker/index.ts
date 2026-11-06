@@ -10,6 +10,7 @@ import { type Ctx, type Env, HttpError, json, Router } from './http';
 import * as inv from './inventory';
 import * as time from './time';
 import * as payroll from './payroll';
+import * as guest from './guest';
 import { closeDrawer, getZReport, pull, push } from './sync';
 
 const r = new Router()
@@ -20,6 +21,14 @@ const r = new Router()
   .add('GET', '/api/public/menu', 'none', admin.publicMenu)
   .add('GET', '/media/:a/:b', 'none', admin.serveMedia)
   .add('POST', '/api/webhooks/bank', 'none', bank.webhook)
+  // QR menu at the table (guests, no login)
+  .add('GET', '/api/guest/:token/menu', 'none', guest.menu)
+  .add('POST', '/api/guest/:token/order', 'none', guest.submit)
+  .add('GET', '/api/guest/:token/order/:id', 'none', guest.status)
+  .add('GET', '/api/guest-orders', 'device', guest.pending)
+  .add('POST', '/api/guest-orders/:id', 'device', guest.handle)
+  .add('GET', '/api/admin/qr', 'staff', guest.tableCodes)
+  .add('POST', '/api/admin/tables/:id/qr-reset', 'staff', guest.resetCode)
 
   // selling devices
   .add('GET', '/api/sync/pull', 'device', pull)
@@ -129,6 +138,8 @@ export default {
     const url = new URL(req.url);
     if (url.pathname === '/.well-known/assetlinks.json') return assetLinks();
     // Keep the POS out of Google and other search engines.
+    const qr = /^\/m\/([A-Za-z0-9]{1,40})\/?$/.exec(url.pathname);
+    if (qr && req.method === 'GET') return guest.page(qr[1]);
     if (url.pathname === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain', 'x-robots-tag': 'noindex, nofollow' } });
     if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/media/')) {
       return noindex(await env.ASSETS.fetch(req));

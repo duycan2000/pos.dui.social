@@ -2,6 +2,14 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.30.0 — 07/11/2026
+- Menu QR tại bàn (Quản trị › Bán hàng › Menu QR tại bàn, chỉ chủ quán):
+  - 3 chế độ: Tắt / Chỉ xem menu / Cho gọi món. Mỗi bàn một mã QR riêng (khó đoán, đổi được); in tất cả ra A4 hoặc in từng mã ra máy in bill.
+  - Khách quét mã: trang menu nhẹ, có ảnh, tiếng Anh/tiếng Việt (tự theo ngôn ngữ điện thoại), chọn tuỳ chọn (đường, đá, mocktail…), ghi chú, gửi đơn; nút "Gọi nhân viên" và "Xin thanh toán". Khách thấy trạng thái: chờ xác nhận → đã xác nhận / bị từ chối (kèm lý do).
+  - Máy bán hàng: chuông + rung + dải "yêu cầu từ khách" trên màn bán hàng và sơ đồ bàn (bàn có yêu cầu được viền xanh). "Nhận & gửi quầy" thêm món vào đơn của bàn (mở bàn nếu trống) và in phiếu pha chế; "Từ chối" chọn lý do.
+  - An toàn: giá luôn lấy từ menu trên máy chủ; chặn gửi dồn dập theo bàn và theo điện thoại; không có gì vào quầy khi nhân viên chưa nhận.
+- Migration 0009 (dining_table.qr_token, guest_order).
+
 ## 0.29.0 — 07/11/2026
 - Lương tháng (Quản trị › Nhân sự › Lương tháng, chỉ chủ quán): mỗi người = giờ công × lương giờ + phụ cấp ca đêm + tip + phụ cấp/thưởng − ứng lương − khấu trừ.
   - Tip: "Ai bán người đó", "Chia theo giờ làm" hoặc "Không tính".

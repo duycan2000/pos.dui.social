@@ -8,6 +8,7 @@ import { PugSvg, pugEnabled, pugSay, setPugEnabled } from '../pug';
 import { addToCart, can, minusItem, cartCount, cartTotals, defaultOptions, isManager, lock, navigate, useStore } from '../lib/store';
 import { appVersion, CAT_COLORS, Icon, PrinterBanner, Sheet, ThemeToggle } from '../ui';
 import Ticket from './Ticket';
+import { GuestBanner } from './GuestRequests';
 
 export default function OrderScreen() {
   const cfg = useStore((s) => s.config)!;
@@ -85,7 +86,7 @@ export default function OrderScreen() {
           </div>
         )}
 
-        <div style={{ padding: '8px 16px 0' }}><PrinterBanner /><LowStockBanner /></div>
+        <div style={{ padding: '8px 16px 0' }}><PrinterBanner /><GuestBanner /><LowStockBanner /></div>
         <nav className="chips" aria-label="Danh mục">
           {cats.map((c) => (
             <button key={c.id} className={'chip' + (!q && c.id === activeCat ? ' on' : '')} onClick={() => { setCat(c.id); setQ(''); }}>

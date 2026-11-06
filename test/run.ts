@@ -366,6 +366,46 @@ await test('Payroll: hours × rate + night premium + tips, adjustments, till adv
   assert.equal(p.rows.find((x: any) => x.staff_id === st.id).paid, null);
 });
 
+await test('QR menu: tokens per table, guests order with server prices, till sees and accepts, anti-spam', async () => {
+  const qr = (await call('GET', '/api/admin/qr')).body;
+  assert.equal(qr.mode, 'off');
+  const tb = qr.tables[0];
+  assert.match(tb.qr_token, /^[A-Za-z0-9]{12}$/);
+  const pub = async (method: string, path: string, b?: unknown) => {
+    const res = await worker.fetch(new Request('http://x' + path, { method, headers: { 'content-type': 'application/json', 'cf-connecting-ip': '1.2.3.4' }, body: b ? JSON.stringify(b) : undefined }), env);
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+  assert.equal((await pub('GET', `/api/guest/${tb.qr_token}/menu`)).status, 403); // off by default
+  const o = (await call('GET', '/api/admin/outlet')).body;
+  await call('PUT', '/api/admin/outlet', { settings_json: JSON.stringify({ ...JSON.parse(o.settings_json || '{}'), guest_order: 'order' }) });
+  const menu = (await pub('GET', `/api/guest/${tb.qr_token}/menu`)).body;
+  assert.equal(menu.table, tb.name);
+  assert.ok(menu.items.length > 0);
+  assert.equal((await pub('GET', '/api/guest/WRONGTOKEN123/menu')).status, 404);
+  const it = menu.items.find((i: any) => !i.sold_out);
+  const sub = await pub('POST', `/api/guest/${tb.qr_token}/order`, { kind: 'order', lines: [{ item_id: it.id, qty: 2, option_ids: ['not-an-option'] }], name: 'Anna', unit_price: 1 });
+  assert.equal(sub.status, 201, JSON.stringify(sub.body));
+  assert.equal(sub.body.total, it.price * 2); // price from the database, unknown options ignored
+  const pend = (await call('GET', '/api/sync/pull')).body.guestOrders;
+  const g = pend.find((x: any) => x.id === sub.body.id);
+  assert.ok(g && g.lines[0].qty === 2 && g.guest_name === 'Anna');
+  // call staff twice = one request
+  const c1 = await pub('POST', `/api/guest/${tb.qr_token}/order`, { kind: 'call' });
+  const c2 = await pub('POST', `/api/guest/${tb.qr_token}/order`, { kind: 'call' });
+  assert.equal(c1.body.id, c2.body.id);
+  assert.equal((await call('POST', `/api/guest-orders/${g.id}`, { status: 'accepted', order_id: 'X' })).body.changed, 1);
+  assert.equal((await pub('GET', `/api/guest/${tb.qr_token}/order/${g.id}`)).body.status, 'accepted');
+  await call('POST', `/api/guest-orders/${c1.body.id}`, { status: 'accepted' });
+  // the guest page itself
+  const page = await worker.fetch(new Request(`http://x/m/${tb.qr_token}`), env);
+  assert.equal(page.status, 200);
+  assert.ok((await page.text()).includes(`var TOKEN='${tb.qr_token}'`));
+  // flood → 429
+  let last = 0;
+  for (let k = 0; k < 8; k++) last = (await pub('POST', `/api/guest/${tb.qr_token}/order`, { kind: 'order', lines: [{ item_id: it.id, qty: 1 }] })).status;
+  assert.equal(last, 429);
+});
+
 await test('Backup: manual run copies every table into R2 and downloads as NDJSON', async () => {
   let r: any, n = 0;
   do { r = (await call('POST', '/api/admin/backups/run', r ? { name: r.body.name } : {})); assert.equal(r.status, 200); n++; } while (!r.body.done && n < 40);

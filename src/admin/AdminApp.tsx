@@ -24,6 +24,7 @@ import S1aBook from './S1aBook';
 import FloorEditor from './FloorEditor';
 import TimeSheet from './TimeSheet';
 import Payroll from './Payroll';
+import QrMenu from './QrMenu';
 
 type Role = 'owner' | 'manager';
 const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, need: Perm | 'owner'][] }[] = [
@@ -32,6 +33,7 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
     ['admin/modifiers', 'Tuỳ chọn món', 'Đường, đá, mocktail, thêm shot', 'sliders', 'menu'],
     ['admin/promotions', 'Khuyến mãi', 'Mua 1 tặng 1, khung giờ', 'gift', 'owner'],
     ['admin/tables', 'Sơ đồ bàn', 'Thêm bàn, khu vực, số ghế', 'table', 'owner'],
+    ['admin/qr', 'Menu QR tại bàn', 'Khách quét mã xem menu, gọi món, gọi nhân viên', 'qr', 'owner'],
   ] },
   { group: 'Nhân sự', items: [
     ['admin/staff', 'Nhân viên & tài khoản', 'Thêm người, PIN, tài khoản đăng nhập, vai trò', 'users', 'owner'],
@@ -134,6 +136,7 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
     case 'tables': return <FloorEditor />;
     case 'time': return <TimeSheet />;
     case 'payroll': return <Payroll />;
+    case 'qr': return <QrMenu />;
     case 'audit': return <Audit />;
     case 'settings': return <Settings />;
     case 'devices': return <Devices />;

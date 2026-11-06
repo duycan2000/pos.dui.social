@@ -4,7 +4,7 @@ import { verifyPin } from '../../shared/crypto';
 import { computeTotals, type Totals } from '../../shared/pricing';
 import type {
   AuditEntry, CashMovement, ChosenOption, DiningTable, DrawerSession, Item, Order, OrderLine, Payment, PosConfig, StaffPublic, StaffShift,
-  TimeEntry, WorkShift, LowStock,
+  TimeEntry, WorkShift, LowStock, GuestOrder, GuestMode,
 } from '../../shared/types';
 import { addDays, businessDay, parseSettings, ulid } from '../../shared/util';
 import { api, setDeviceToken, setStaffSession } from './api';
@@ -57,6 +57,8 @@ export interface AppState {
   schedule: WorkShift[];
   /** Ingredients under their minimum and the menu items that use them (from the last pull). */
   lowStock: LowStock | null;
+  /** Requests from the table QR menu waiting for staff. */
+  guestOrders: GuestOrder[];
 }
 
 const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], customer_label: '', order_type: 'takeaway' });
@@ -64,7 +66,7 @@ const newCart = (): Cart => ({ id: ulid(), created_at: Date.now(), lines: [], cu
 let state: AppState = {
   boot: 'loading', config: null, staff: null, shift: null, drawer: null, drawers: [], cart: newCart(), orders: [], cashMoves: [],
   net: { online: navigator.onLine, busy: false, pending: 0, lastSync: null, lastError: null },
-  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null, timeEntries: [], schedule: [], lowStock: null,
+  route: 'login', toast: null, adminSession: null, approval: null, lastPaid: null, timeEntries: [], schedule: [], lowStock: null, guestOrders: [],
 };
 const listeners = new Set<() => void>();
 
@@ -85,7 +87,7 @@ export function today(cfg = state.config): string {
   return businessDay(Date.now(), cfg.outlet.tz_offset_min, cfg.outlet.business_day_cutoff);
 }
 export function settings() {
-  return parseSettings<{ done_return_seconds?: number; cost_alert_pct?: number; tax_threshold_year?: number }>(state.config?.outlet.settings_json);
+  return parseSettings<{ done_return_seconds?: number; cost_alert_pct?: number; tax_threshold_year?: number; guest_order?: GuestMode }>(state.config?.outlet.settings_json);
 }
 /** The latest row for a person (permissions may have changed since they logged in). */
 function fresh(s: StaffPublic | null) {
@@ -760,4 +762,67 @@ export async function clockOut(staffId: string, breakMin = 0) {
   const done: TimeEntry = { ...e, clock_out: t, break_min: Math.max(0, Math.min(breakMin, Math.floor((t - e.clock_in) / 60000) - 1)), updated_at: t };
   await saveEntry(done);
   return done;
+}
+
+// ---------- QR menu requests (guest orders) ----------
+
+/** Put a guest's order on the table's open order (or open the table) and send it to the bar. */
+export async function acceptGuestOrder(g: GuestOrder) {
+  const s = getState();
+  const cfg = s.config!;
+  if (g.kind === 'order') {
+    if (s.cart.lines.some((l) => l.status === 'active' && !l.sent_at)) throw new Error('Đang có món chọn dở trên máy. Gửi hoặc xoá đơn đó trước rồi nhận đơn của khách.');
+    const open = tableOrders().get(g.table_id)?.find((o) => o.status === 'open');
+    if (open) await openTab(open.id);
+    else await startTable(g.table_id, null);
+    if (!open && g.guest_name) await setCartMeta({ customer_label: g.guest_name });
+    let added = 0;
+    for (const l of g.lines) {
+      const item = cfg.items.find((i) => i.id === l.item_id);
+      if (!item) continue;
+      const mods: ChosenOption[] = l.option_ids
+        .map((id) => cfg.modifierOptions.find((o) => o.id === id))
+        .filter((o): o is NonNullable<typeof o> => !!o)
+        .map((o) => ({ id: o.id, group_id: o.group_id, name: o.name_vi, price_delta: o.price_delta, excludes_promo: o.excludes_promo }));
+      const note = [l.note, g.note && added === 0 ? `Khách: ${g.note}` : null].filter(Boolean).join(' · ') || null;
+      await addToCart(item, mods, l.qty, note);
+      added++;
+    }
+    if (!added) throw new Error('Các món trong đơn không còn trên menu');
+    const order = await saveToTab();
+    await api('POST', `/api/guest-orders/${g.id}`, { status: 'accepted', order_id: order.id, staff_id: s.staff?.id });
+  } else {
+    await api('POST', `/api/guest-orders/${g.id}`, { status: 'accepted', staff_id: s.staff?.id });
+  }
+  setState((st) => ({ guestOrders: st.guestOrders.filter((x) => x.id !== g.id) }));
+}
+
+export async function rejectGuestOrder(g: GuestOrder, reason: string) {
+  await api('POST', `/api/guest-orders/${g.id}`, { status: 'rejected', reason, staff_id: getState().staff?.id });
+  setState((st) => ({ guestOrders: st.guestOrders.filter((x) => x.id !== g.id) }));
+}
+
+let lastGuestIds = new Set<string>();
+/** Short beep + vibration when a new guest request arrives (no sound file needed). */
+export function noteGuestOrders(list: GuestOrder[]) {
+  const fresh = list.filter((g) => !lastGuestIds.has(g.id));
+  if (lastGuestIds.size && fresh.length) {
+    try {
+      const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AC();
+      [0, 0.18].forEach((d, i) => {
+        const o = ctx.createOscillator(); const gain = ctx.createGain();
+        o.frequency.value = i ? 1320 : 880; o.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime + d); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + d + 0.16);
+        o.start(ctx.currentTime + d); o.stop(ctx.currentTime + d + 0.17);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 800);
+    } catch { /* no audio */ }
+    navigator.vibrate?.([120, 60, 120]);
+    const tbl = tableById(fresh[0].table_id)?.name ?? 'Bàn';
+    toast(fresh[0].kind === 'order' ? `${tbl}: khách gọi món qua QR` : fresh[0].kind === 'bill' ? `${tbl}: khách xin thanh toán` : `${tbl}: khách gọi nhân viên`);
+  }
+  lastGuestIds = new Set(list.map((g) => g.id));
+  if (lastGuestIds.size === 0) lastGuestIds.add('_'); // the first (empty) load is not "new"
+  setState({ guestOrders: list });
 }

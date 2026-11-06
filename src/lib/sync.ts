@@ -1,8 +1,9 @@
 // Outbox sync. Selling never waits for the network: records queue locally and go up when online.
-import type { CashMovement, DrawerSession, Order, PosConfig, StaffShift, TimeEntry, WorkShift, LowStock } from '../../shared/types';
+import type { CashMovement, DrawerSession, Order, PosConfig, StaffShift, TimeEntry, WorkShift, LowStock, GuestOrder } from '../../shared/types';
 import { api, ApiError } from './api';
+import { parseSettings } from '../../shared/util';
 import { kv, outbox, table } from './db';
-import { getState, pickDrawer, pruneLocal, refreshPending, setState, setSyncKick } from './store';
+import { getState, pickDrawer, pruneLocal, refreshPending, setState, setSyncKick, noteGuestOrders } from './store';
 
 let running = false;
 let again = false;
@@ -15,6 +16,13 @@ export function startSync() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) runSync(); });
   setInterval(runSync, 15000);
   setInterval(pruneLocal, 3600 * 1000);
+  // QR menu on: look for guest requests more often than the full sync (one tiny query).
+  setInterval(() => {
+    const st = getState();
+    const mode = parseSettings<{ guest_order?: string }>(st.config?.outlet.settings_json).guest_order;
+    if (!mode || mode === 'off' || !st.staff || !navigator.onLine || document.hidden) return;
+    api<GuestOrder[]>('GET', '/api/guest-orders').then(noteGuestOrders).catch(() => {});
+  }, 6000);
   runSync();
 }
 
@@ -62,7 +70,7 @@ async function pushAll() {
 
 async function pullAll() {
   const since = (await kv.get<number>('cursor')) ?? 0;
-  const r = await api<{ serverTime: number; config: PosConfig; drawers: DrawerSession[]; shifts: StaffShift[]; orders: Order[]; cashMovements: CashMovement[]; timeEntries?: TimeEntry[]; schedule?: WorkShift[]; lowStock?: LowStock }>(
+  const r = await api<{ serverTime: number; config: PosConfig; drawers: DrawerSession[]; shifts: StaffShift[]; orders: Order[]; cashMovements: CashMovement[]; timeEntries?: TimeEntry[]; schedule?: WorkShift[]; lowStock?: LowStock; guestOrders?: GuestOrder[] }>(
     'GET', `/api/sync/pull?since=${since}`,
   );
   const pending = new Set((await outbox.all()).map((x) => x.id));
@@ -80,6 +88,7 @@ async function pullAll() {
   await kv.set('timeEntries', timeEntries);
   await kv.set('schedule', schedule);
   if (r.lowStock) await kv.set('lowStock', r.lowStock);
+  if (r.guestOrders) noteGuestOrders(r.guestOrders);
 
   const orders = r.orders.filter((o) => !pending.has(o.id));
   await table<Order>('orders').putMany(orders);

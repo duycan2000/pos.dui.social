@@ -295,3 +295,11 @@ export interface LowStock {
   /** Menu items that use a low ingredient: 'out' when one of them is at zero. */
   items: Record<string, 'low' | 'out'>;
 }
+
+/** A guest's order / call from the table QR menu, waiting for staff (v0.30). */
+export interface GuestOrder {
+  id: string; table_id: string; kind: 'order' | 'call' | 'bill'; status: 'new' | 'accepted' | 'rejected';
+  lines: { item_id: string; name: string; qty: number; option_ids: string[]; options: string[]; unit_price: number; note: string | null }[];
+  total: number; guest_name: string | null; note: string | null; lang: string | null; created_at: number;
+}
+export type GuestMode = 'off' | 'menu' | 'order';

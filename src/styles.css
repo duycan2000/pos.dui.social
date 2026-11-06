@@ -409,7 +409,7 @@ table.t tbody tr:hover td { background: var(--surface-2); }
 .floorwrap { overflow-x: auto; padding-bottom: 8px; }
 .floor { display: grid; gap: 10px; min-width: min-content; padding: 14px; border-radius: var(--r-l); background:
   radial-gradient(circle, var(--surface-2) 1px, transparent 1.5px) 0 0 / 22px 22px, var(--panel); border: 1px solid var(--border); }
-.tbl { flex: 1; width: 100%; min-height: 76px; border-radius: 14px; border: 1.5px dashed var(--border-2); background: var(--surface);
+.tbl { position: relative; flex: 1; width: 100%; min-height: 76px; border-radius: 14px; border: 1.5px dashed var(--border-2); background: var(--surface);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px; text-align: center; transition: transform 0.1s, background 0.15s; }
 .tbl:active { transform: scale(0.97); }
 .tbl.round { border-radius: 999px; }
@@ -679,3 +679,12 @@ button:hover .i-moon { animation: wiggle .7s ease-in-out; }
 
 .badge.warn { background: rgba(245, 158, 11, 0.18); color: #f59e0b; }
 :root[data-theme="light"] .badge.warn { color: #b45309; }
+
+/* QR menu requests (v0.30) */
+.guestbanner { background: var(--info-soft); color: var(--info); }
+.guestbanner .bell { display: inline-flex; animation: ring 1.2s ease-in-out infinite; transform-origin: 50% 0; }
+@keyframes ring { 0%, 60%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(14deg); } 20%, 40% { transform: rotate(-14deg); } }
+.tbl.asking { box-shadow: 0 0 0 3px var(--info); }
+.tbl .askdot { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; gap: 2px; background: var(--info); color: #fff; border-radius: 999px; padding: 1px 6px; font-size: 11px; font-weight: 800; }
+@media (prefers-reduced-motion: reduce) { .guestbanner .bell { animation: none; } }
+.qrgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }

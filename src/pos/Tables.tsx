@@ -11,6 +11,7 @@ import {
 } from '../lib/store';
 import { runSync } from '../lib/sync';
 import { Confirm, Empty, Icon, PrinterBanner, Segmented, Sheet, TopBar } from '../ui';
+import { GuestBanner } from './GuestRequests';
 
 type Status = 'free' | 'busy' | 'bill' | 'transfer';
 const STATUS_LABEL: Record<Status, string> = { free: 'Trống', busy: 'Có khách', bill: 'Đã in tạm tính', transfer: 'Chờ chuyển khoản' };
@@ -86,7 +87,7 @@ export default function Tables() {
           })}
         </nav>
       )}
-      <div style={{ padding: '0 16px' }}><PrinterBanner /></div>
+      <div style={{ padding: '0 16px' }}><PrinterBanner /><GuestBanner /></div>
       <div className="legend" aria-label="Chú thích">
         {(['free', 'busy', 'bill', 'transfer'] as Status[]).map((s) => <span key={s} className={'lg ' + s}><i />{STATUS_LABEL[s]} · {counts[s]}</span>)}
       </div>
@@ -135,10 +136,12 @@ function TableTile({ t, orders, onPick, selected }: { t: DiningTable; orders?: O
   const total = (orders ?? []).reduce((s, o) => s + (o.status === 'open' ? cartTotals(o.lines).total : o.total), 0);
   const first = orders?.length ? Math.min(...orders.map((o) => o.created_at)) : 0;
   const guests = (orders ?? []).reduce((s, o) => s + (o.guests || 0), 0);
+  const asks = useStore((s) => s.guestOrders.filter((g) => g.table_id === t.id).length);
   return (
-    <button className={`tbl ${st} ${t.shape}${selected ? ' sel' : ''}`} onClick={() => onPick(t)}
+    <button className={`tbl ${st} ${t.shape}${selected ? ' sel' : ''}${asks ? ' asking' : ''}`} onClick={() => onPick(t)}
       aria-label={`${t.name}, ${STATUS_LABEL[st]}${st !== 'free' ? `, ${vnd(total)}` : ''}`}>
       <span className="tn">{t.name}</span>
+      {asks > 0 && <span className="askdot" aria-label={`${asks} yêu cầu QR`}><Icon name="bell" size={12} />{asks}</span>}
       {st === 'free' ? <span className="tiny muted">{t.seats} chỗ</span> : (
         <>
           <span className="tt mono">{vndShort(total)}</span>
