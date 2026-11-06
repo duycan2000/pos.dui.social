@@ -7,6 +7,7 @@ import { startSync } from './lib/sync';
 import Cart from './pos/Cart';
 import CashMove from './pos/CashMove';
 import Checkout from './pos/Checkout';
+import Split from './pos/Split';
 import CloseShift from './pos/CloseShift';
 import Done from './pos/Done';
 import Login from './pos/Login';
@@ -77,6 +78,7 @@ function pick(route: string): JSX.Element {
     case 'printer': return <PrinterSettings />;
     case 'cart': return <Cart />;
     case 'checkout': return <Checkout />;
+    case 'split': return <Split />;
     case 'done': return <Done />;
     case 'orders': return <Orders />;
     case 'cashmove': return <CashMove />;

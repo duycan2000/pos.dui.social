@@ -9,11 +9,11 @@ import { vietQrPayload } from '../../shared/vietqr';
 import { api } from '../lib/api';
 import { kickDrawer, printerSettings } from '../lib/printer';
 import { preBillDoc, qrBillDoc, tryPrint } from '../lib/receipts';
-import { cartAsOrder, cartTotals, finalizeCart, makePayment, navigate, optionLabel, peekShortCode, setState, toast, useStore } from '../lib/store';
+import { cartAsOrder, cartCount, cartTotals, finalizeCart, makePayment, navigate, optionLabel, peekShortCode, setState, toast, useStore } from '../lib/store';
 import { runSync } from '../lib/sync';
 import { Icon, Keypad, MoneyInput, Sheet, TopBar } from '../ui';
 
-type Step = 'methods' | 'cash' | 'vietqr' | 'card' | 'mixed';
+type Step = 'methods' | 'cash' | 'vietqr' | 'card' | 'mixed' | 'even';
 
 export default function Checkout() {
   const cart = useStore((s) => s.cart);
@@ -45,7 +45,7 @@ export default function Checkout() {
     } finally { setBusy(false); }
   };
   const back = () => (step === 'methods' ? navigate(window.matchMedia('(min-width: 980px)').matches ? 'order' : 'cart') : setStep('methods'));
-  const title = { methods: 'Thanh toán', cash: 'Tiền mặt', vietqr: 'Chuyển khoản VietQR', card: 'Thẻ', mixed: 'Kết hợp nhiều cách' }[step];
+  const title = { methods: 'Thanh toán', cash: 'Tiền mặt', vietqr: 'Chuyển khoản VietQR', card: 'Thẻ', mixed: 'Kết hợp nhiều cách', even: 'Chia đều' }[step];
   const ref = 'DUI ' + code.replace('-', '');
 
   return (
@@ -83,6 +83,8 @@ export default function Checkout() {
                   <button className="method" onClick={() => setStep('cash')}><span className="ico"><Icon name="cash" /></span><span>Tiền mặt<br /><small>Tính tiền thối · tip từ tiền thối</small></span></button>
                   <button className="method" onClick={() => setStep('vietqr')}><span className="ico" style={{ background: 'var(--info-soft)', color: 'var(--info)' }}><Icon name="qr" /></span><span>VietQR<br /><small>Mã QR có sẵn số tiền</small></span></button>
                   <button className="method" onClick={() => setStep('card')}><span className="ico" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}><Icon name="card" /></span><span>Thẻ<br /><small>Quẹt trên máy POS ngân hàng</small></span></button>
+                  <button className="method" onClick={() => setStep('even')}><span className="ico" style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}><Icon name="users" /></span><span>Chia đều<br /><small>Mỗi người trả một phần bằng nhau</small></span></button>
+                  {cart.tabCode && cartCount(cart.lines) > 1 && <button className="method" onClick={() => navigate('split')}><span className="ico" style={{ background: 'var(--accent-soft)', color: 'var(--accent-fg)' }}><Icon name="list" /></span><span>Tách theo món<br /><small>Ai gọi gì trả nấy</small></span></button>}
                   <button className="method" onClick={() => setStep('mixed')}><span className="ico" style={{ background: 'var(--violet-soft)', color: 'var(--violet)' }}><Icon name="split" /></span><span>Kết hợp<br /><small>Một phần tiền mặt, một phần CK</small></span></button>
                 </div>
               </div>
@@ -94,6 +96,7 @@ export default function Checkout() {
                 onWait={() => finish('awaiting_payment', [makePayment('vietqr', due, { status: 'pending', reference: ref })])} />
             )}
             {step === 'card' && <CardPay total={due + tip} busy={busy} onPay={(r) => finish('paid', [makePayment('card', due, { tip, reference: r || null })])} />}
+            {step === 'even' && <EvenPay due={due} code={code} busy={busy} guests={cart.guests ?? null} onPay={(parts) => finish('paid', parts, parts.reduce((s, p) => s + p.change_given, 0))} />}
             {step === 'mixed' && <MixedPay due={due} code={code} busy={busy} onPay={(parts) => finish('paid', parts, parts.reduce((s, p) => s + p.change_given, 0))} />}
           </section>
         </div>
@@ -264,7 +267,67 @@ function MixedPay({ due, code, onPay, busy }: { due: number; code: string; onPay
   );
 }
 
-function PartSheet({ method, max, code, onAdd, onClose }: { method: PayMethod; max: number; code: string; onAdd: (p: Payment) => void; onClose: () => void }) {
+/** Even split: N people, each pays a share (rounded to 1.000đ; the last share takes the rest), any method each. */
+function EvenPay({ due, code, guests, onPay, busy }: { due: number; code: string; guests: number | null; onPay: (p: Payment[]) => void; busy: boolean }) {
+  const [n, setN] = useState(Math.min(10, Math.max(2, guests || 2)));
+  const [paid, setPaid] = useState<(Payment | null)[]>([]);
+  const [adding, setAdding] = useState<{ i: number; method: PayMethod } | null>(null);
+  const base = Math.floor(due / n / 1000) * 1000;
+  const shares = Array.from({ length: n }, (_, i) => (i === n - 1 ? due - base * (n - 1) : base));
+  const parts = shares.map((_, i) => paid[i] ?? null);
+  const done = parts.filter(Boolean) as Payment[];
+  const started = done.length > 0;
+  const names: Record<PayMethod, string> = { cash: 'Tiền mặt', vietqr: 'VietQR', card: 'Thẻ' };
+  return (
+    <div className="col gap16">
+      <div className="amount-card">
+        <div className="label">Mỗi người</div>
+        <div className="value">{vnd(base)}</div>
+        <div className="small muted">{n} người · tổng {vnd(due)}{shares[n - 1] !== base ? ` · người cuối ${vnd(shares[n - 1])}` : ''}</div>
+      </div>
+      <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
+        <span className="stepper">
+          <button aria-label="Bớt người" disabled={started || n <= 2} onClick={() => setN(n - 1)}><Icon name="minus" size={16} /></button>
+          <span>{n}</span>
+          <button aria-label="Thêm người" disabled={started || n >= 20} onClick={() => setN(n + 1)}><Icon name="plus" size={16} /></button>
+        </span>
+        <span className="small muted">người</span>
+      </div>
+      <div className="list">
+        {shares.map((amt, i) => {
+          const p = parts[i];
+          return (
+            <div key={i} className="li" style={{ minHeight: 0, padding: '10px 12px', gap: 8 }}>
+              <span className="grow col" style={{ gap: 1 }}>
+                <b className="small">Người {i + 1}</b>
+                <span className="mono small">{vnd(amt)}</span>
+              </span>
+              {p ? (
+                <>
+                  <span className="badge ok">{names[p.method]}{p.method === 'cash' && p.change_given ? ` · thối ${vndShort(p.change_given)}` : ''}</span>
+                  <button className="iconbtn ghost" aria-label="Bỏ phần này" onClick={() => { const c = [...paid]; c[i] = null; setPaid(c); }}><Icon name="close" size={16} /></button>
+                </>
+              ) : (
+                <span className="row" style={{ gap: 6 }}>
+                  <button className="btn sm" onClick={() => setAdding({ i, method: 'cash' })}><Icon name="cash" size={16} /></button>
+                  <button className="btn sm" onClick={() => setAdding({ i, method: 'vietqr' })}><Icon name="qr" size={16} /></button>
+                  <button className="btn sm" onClick={() => setAdding({ i, method: 'card' })}><Icon name="card" size={16} /></button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn primary xl block" disabled={busy || done.length !== n} onClick={() => onPay(done)}>
+        {done.length === n ? 'Hoàn tất' : `Đã thu ${done.length}/${n} người`}
+      </button>
+      {adding && <PartSheet method={adding.method} max={shares[adding.i]} fixed code={code} title={`Người ${adding.i + 1}`} onClose={() => setAdding(null)}
+        onAdd={(p) => { const c = [...paid]; c[adding.i] = p; setPaid(c); setAdding(null); }} />}
+    </div>
+  );
+}
+
+function PartSheet({ method, max, code, onAdd, onClose, fixed, title }: { method: PayMethod; max: number; code: string; onAdd: (p: Payment) => void; onClose: () => void; fixed?: boolean; title?: string }) {
   const [amount, setAmount] = useState(max);
   const [tendered, setTendered] = useState(0);
   const [ref, setRef] = useState('');
@@ -277,9 +340,10 @@ function PartSheet({ method, max, code, onAdd, onClose }: { method: PayMethod; m
   };
   return (
     <Sheet onClose={onClose}>
-      <h2>{method === 'cash' ? 'Phần tiền mặt' : method === 'vietqr' ? 'Phần chuyển khoản' : 'Phần thẻ'}</h2>
+      <h2>{title ? `${title} · ` : ''}{method === 'cash' ? 'Tiền mặt' : method === 'vietqr' ? 'Chuyển khoản' : 'Thẻ'}</h2>
       <div className="col gap12 mt16">
-        <MoneyInput label={`Số tiền (tối đa ${vnd(max)})`} value={amount} onChange={setAmount} />
+        {fixed ? <div className="amount-card" style={{ padding: 12 }}><div className="label">Cần thu</div><div className="value">{vnd(amount)}</div></div>
+          : <MoneyInput label={`Số tiền (tối đa ${vnd(max)})`} value={amount} onChange={setAmount} />}
         {method === 'cash' && <MoneyInput label="Khách đưa (để trống nếu vừa đủ)" value={tendered} onChange={setTendered} />}
         {method === 'cash' && tendered > amount && <div className="kv"><span className="muted">Tiền thối</span><span className="mono accent bold">{vnd(tendered - amount)}</span></div>}
         {method === 'card' && <label className="field"><span>Mã chuẩn chi (không bắt buộc)</span><input className="input" value={ref} onChange={(e) => setRef(e.target.value)} /></label>}

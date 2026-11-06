@@ -66,6 +66,7 @@ export default function Ticket({ onBack }: { onBack?: () => void }) {
           </div>
           {hasTables && <button className="iconbtn" aria-label={table ? 'Đổi bàn' : 'Chọn bàn'} onClick={() => setPickTable(true)}><Icon name="table" /></button>}
           <button className="iconbtn" aria-label="In bill cho khách" disabled={!count} onClick={preBill}><Icon name="printer" /></button>
+          {isTab && <button className="iconbtn" aria-label="Tách bill" disabled={count < 2 || newCount > 0} onClick={() => navigate('split')}><Icon name="split" /></button>}
           {isTab
             ? <button className="iconbtn" aria-label="Huỷ tab" onClick={cancelTab}><Icon name="trash" /></button>
             : <button className="iconbtn" aria-label="Xoá đơn" disabled={!count} onClick={() => setAskClear(true)}><Icon name="trash" /></button>}

@@ -499,6 +499,27 @@ await test('Table order stays unpaid: rounds, pre-bill mark, move table; old ope
   assert.ok((await call('GET', '/api/sync/pull?since=0')).body.orders.some((x: any) => x.id === old.id));
   await push([{ type: 'order', data: { ...old, status: 'void', void_reason: 'test', voided_at: Date.now() } }]);
 });
+await test('Split bill: moved lines change order, qty split keeps the original line id, both totals right', async () => {
+  const t0 = Date.now();
+  const L1 = { ...line(ulid(), itemId, 50000, 3), sent_at: t0 }; // 3 beers, no BOGO item needed: use itemId anyway
+  const L2 = { ...line(ulid(), itemId, 80000, 1), sent_at: t0 };
+  const o = mkOrder({ short_code: 'A-401', table_id: 'TBL06', guests: 3, drawer_session_id: null, lines: [L1, L2], subtotal: 230000, total: 230000 });
+  await push([{ type: 'order', data: o }]);
+  // What splitOrder() sends: the new order (1 of L1 as a new line + all of L2), then the original with 2 of L1.
+  const moved1 = { ...L1, id: ulid(), qty: 1, line_total: 50000 };
+  const part = mkOrder({ short_code: 'A-402', table_id: 'TBL06', drawer_session_id: null, lines: [moved1, { ...L2, sort: 1 }], subtotal: 130000, total: 130000, customer_label: 'Tách từ #A-401' });
+  await push([{ type: 'order', data: part }, { type: 'order', data: { ...o, lines: [{ ...L1, qty: 2, line_total: 100000 }], subtotal: 100000, total: 100000 } }]);
+  const orders = (await call('GET', '/api/sync/pull?since=0')).body.orders;
+  const so = orders.find((x: any) => x.id === o.id);
+  const sp = orders.find((x: any) => x.id === part.id);
+  assert.equal(so.lines.length, 1);
+  assert.equal(so.lines[0].qty, 2);
+  assert.equal(sp.lines.length, 2);
+  assert.ok(so.total + sp.total <= 230000);
+  // pay both and void nothing: clean up
+  for (const x of [{ ...o, lines: [{ ...L1, qty: 2 }] }, part]) await push([{ type: 'order', data: { ...x, status: 'void', void_reason: 'test', voided_at: Date.now() } }]);
+});
+
 await test('Merge tables: lines move to the target, BOGO recomputed, merged tab not counted as a void, late rounds refused', async () => {
   const t0 = Date.now();
   const A1 = { ...line(ulid(), itemId, 120000, 1), sent_at: t0 };

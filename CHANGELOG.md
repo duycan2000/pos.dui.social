@@ -2,6 +2,12 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.28.0 — 07/11/2026
+- Chia bill:
+  - Tách theo món: ở bàn (nút "Tách bill"), trên đơn (biểu tượng tách) hoặc ở Thanh toán › Tách theo món. Chọn món (chia được theo số lượng, VD 1 trong 3 bia) → thành đơn riêng cùng bàn. "Tách & thanh toán" trả ngay, "Tách, trả sau" để đó. Khuyến mãi 1+1 tính lại cho từng đơn.
+  - Chia đều: Thanh toán › Chia đều, chọn số người (mặc định theo số khách của bàn); mỗi người trả phần của mình bằng tiền mặt / QR / thẻ. Làm tròn 1.000đ, người cuối trả phần lẻ.
+- Nhật ký ghi lại mỗi lần tách bill.
+
 ## 0.27.0 — 07/11/2026
 - Cảnh báo sắp hết hàng: nguyên liệu xuống dưới mức tối thiểu được gửi tới máy bán hàng mỗi lần đồng bộ.
   - Ô món dùng nguyên liệu đó hiện nhãn "Sắp hết" (hoặc "Hết NL" khi tồn = 0) — vẫn bán được, chỉ để nhân viên biết.

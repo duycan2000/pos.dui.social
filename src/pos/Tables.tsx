@@ -213,6 +213,11 @@ function BusyTableSheet({ table, orders, onClose }: { table: DiningTable; orders
     await openTab(o.id);
     navigate('checkout');
   };
+  const split = async () => {
+    if (otherCartBusy) { toast('Đơn đang chọn dở trên máy chưa lưu. Gửi hoặc xoá đơn đó trước.', true); return; }
+    await openTab(o.id);
+    navigate('split');
+  };
   const cancel = async () => {
     const r = await requestApproval({ title: `Huỷ ${table.name} #${o.short_code}`, reasonRequired: true, reasons: ['Khách về không gọi', 'Mở nhầm bàn', 'Khách bỏ về'] });
     if (r) { await voidOrder(o.id, r.reason, r.approver.id); onClose(); }
@@ -276,6 +281,7 @@ function BusyTableSheet({ table, orders, onClose }: { table: DiningTable; orders
         <button className="btn lg" onClick={prebill}><Icon name="printer" size={20} />{o.prebill_at ? 'In lại tạm tính' : 'In tạm tính'}</button>
         <button className="btn" onClick={() => setMode('move')}><Icon name="move" size={18} />Chuyển bàn</button>
         <button className="btn" onClick={() => setMode('merge')}><Icon name="merge" size={18} />Gộp bàn</button>
+        <button className="btn" disabled={lines.length < 2 && !lines.some((l) => l.qty > 1)} onClick={split}><Icon name="split" size={18} />Tách bill</button>
       </div>
       <button className="btn primary xl block mt16" onClick={pay}>Thanh toán · {vnd(t.total)}</button>
       <button className="btn ghost danger-text block mt8" onClick={cancel}>Huỷ bàn</button>

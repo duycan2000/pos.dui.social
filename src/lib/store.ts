@@ -673,6 +673,52 @@ export async function mergeOrders(targetId: string, sourceId: string) {
   return merged;
 }
 
+/**
+ * Split an open order (tách bill): `take` says how many of each line move to a new order of their own,
+ * on the same table. A line can be split by quantity (3 beers → 1 moves). Promotions are worked out again
+ * for both orders. The new order is open; pay it right away or later like any tab.
+ */
+export async function splitOrder(orderId: string, take: Record<string, number>, label?: string): Promise<Order> {
+  const s = getState();
+  const cfg = s.config!;
+  const src = s.orders.find((x) => x.id === orderId && x.status === 'open');
+  if (!src) throw new Error('Chỉ tách được đơn đang mở (tab / bàn)');
+  mustNotHaveUnsent(orderId);
+  const t = Date.now();
+  const keep: OrderLine[] = [];
+  const moved: OrderLine[] = [];
+  for (const l of src.lines) {
+    const n = Math.min(l.qty, Math.max(0, Math.round(take[l.id] || 0)));
+    if (l.status !== 'active' || n <= 0) { keep.push(l); continue; }
+    if (n === l.qty) moved.push(l);
+    else {
+      keep.push({ ...l, qty: l.qty - n, line_total: l.unit_price * (l.qty - n) });
+      moved.push({ ...l, id: ulid(), qty: n, line_total: l.unit_price * n });
+    }
+  }
+  if (!moved.length) throw new Error('Chưa chọn món nào để tách');
+  if (!keep.some((l) => l.status === 'active')) throw new Error('Đã chọn hết món — bấm Thanh toán để trả cả đơn');
+  const totals = (lines: OrderLine[]) => computeTotals(lines.map((l) => ({ ...l })), cfg.promotions, cfg.promotionItems, t, cfg.outlet.tz_offset_min);
+  const tk = totals(keep);
+  const tm = totals(moved);
+  const part: Order = {
+    ...src, id: ulid(), short_code: await nextShortCode(), customer_label: (label || '').trim() || `Tách từ #${src.short_code}`,
+    staff_id: s.staff!.id, staff_shift_id: s.shift?.id ?? src.staff_shift_id, guests: null, prebill_at: null, merged_into: null,
+    lines: moved.map((l, i) => ({ ...l, sort: i })), adjustments: tm.adjustments, payments: [],
+    subtotal: tm.subtotal, promo_total: tm.promo_total, discount_total: tm.discount_total, comp_total: tm.comp_total, tip_total: 0, total: tm.total,
+    created_at: t, updated_at: t,
+  };
+  const rest: Order = {
+    ...src, lines: keep, adjustments: tk.adjustments, prebill_at: null, updated_at: t,
+    subtotal: tk.subtotal, promo_total: tk.promo_total, discount_total: tk.discount_total, comp_total: tk.comp_total, total: tk.total,
+  };
+  await audit({ actor_id: s.staff!.id, approver_id: null, action: 'order_split', entity: 'order', entity_id: src.id, before_json: JSON.stringify({ code: src.short_code, total: src.total }), after_json: JSON.stringify({ kept: rest.total, new_code: part.short_code, moved: part.total }), reason: null });
+  await saveOrder(part); // first: on the server the moved lines switch to the new order
+  await saveOrder(rest);
+  if (state.cart.id === orderId) await openTab(orderId);
+  return part;
+}
+
 /** Record that the pre-bill was printed. The order stays open and unpaid. */
 export async function markPrebill(orderId: string) {
   const o = state.orders.find((x) => x.id === orderId && x.status === 'open');
