@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.31.0 — 07/11/2026
+- Đồng bộ an toàn hơn: nếu phần sắp hết hàng hoặc yêu cầu QR bị lỗi (VD chưa chạy migration mới), máy bán hàng vẫn đồng bộ và bán bình thường.
+
 ## 0.30.0 — 07/11/2026
 - Menu QR tại bàn (Quản trị › Bán hàng › Menu QR tại bàn, chỉ chủ quán):
   - 3 chế độ: Tắt / Chỉ xem menu / Cho gọi món. Mỗi bàn một mã QR riêng (khó đoán, đổi được); in tất cả ra A4 hoặc in từng mã ra máy in bill.

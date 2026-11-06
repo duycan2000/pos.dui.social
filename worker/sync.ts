@@ -33,8 +33,9 @@ export async function pull(c: Ctx) {
     loadOrders(c.env, "WHERE o.updated_at > ? AND (o.business_day >= ? OR o.status IN ('open','awaiting_payment'))", since, fromDay),
     all<CashMovement>(c.env, 'SELECT * FROM cash_movement WHERE updated_at > ? AND business_day >= ?', since, fromDay),
     deviceTimeData(c.env, today),
-    lowStockSnapshot(c.env),
-    pendingFor(c.env),
+    // Extras must never break selling (e.g. a migration not applied yet): fall back to nothing.
+    lowStockSnapshot(c.env).catch((e) => { console.error('lowStock', e); return null; }),
+    pendingFor(c.env).catch((e) => { console.error('guestOrders', e); return []; }),
   ]);
   return json({ serverTime, config, drawers, shifts, orders, cashMovements: cash, ...time, lowStock, guestOrders });
 }
