@@ -23,6 +23,7 @@ import Analytics from './Analytics';
 import S1aBook from './S1aBook';
 import FloorEditor from './FloorEditor';
 import TimeSheet from './TimeSheet';
+import Payroll from './Payroll';
 
 type Role = 'owner' | 'manager';
 const NAV: { group: string; items: [route: string, title: string, sub: string, icon: string, need: Perm | 'owner'][] }[] = [
@@ -35,6 +36,7 @@ const NAV: { group: string; items: [route: string, title: string, sub: string, i
   { group: 'Nhân sự', items: [
     ['admin/staff', 'Nhân viên & tài khoản', 'Thêm người, PIN, tài khoản đăng nhập, vai trò', 'users', 'owner'],
     ['admin/time', 'Giờ làm', 'Chấm công, lịch làm, lương giờ', 'calendar', 'time'],
+    ['admin/payroll', 'Lương tháng', 'Tính lương, phụ cấp, ứng lương, phiếu lương', 'cash', 'owner'],
   ] },
   { group: 'Kho', items: [
     ['admin/inventory', 'Tồn kho', 'Tồn, sắp hết, cần mua', 'box', 'inventory'],
@@ -131,6 +133,7 @@ function renderPage(page: string | undefined, id: string | undefined, role: Role
     case 'staff': return <Staff />;
     case 'tables': return <FloorEditor />;
     case 'time': return <TimeSheet />;
+    case 'payroll': return <Payroll />;
     case 'audit': return <Audit />;
     case 'settings': return <Settings />;
     case 'devices': return <Devices />;

@@ -44,7 +44,7 @@ interface Summary {
 export const CATEGORY: Record<string, string> = {
   purchase: 'Nhập hàng', salary: 'Lương', rent: 'Mặt bằng', utilities: 'Điện nước, internet', marketing: 'Marketing', bank_fee: 'Phí ngân hàng',
   repair: 'Sửa chữa', supplies: 'Vật tư', other_out: 'Chi khác', other_in: 'Thu khác', owner_capital: 'Chủ góp vốn',
-  drawer_ice: 'Đá (két)', drawer_fruit: 'Trái cây (két)', drawer_supplies: 'Vật tư (két)', drawer_change: 'Đổi tiền (két)', drawer_other: 'Khác (két)',
+  drawer_ice: 'Đá (két)', drawer_fruit: 'Trái cây (két)', drawer_supplies: 'Vật tư (két)', drawer_change: 'Đổi tiền (két)', drawer_other: 'Khác (két)', drawer_advance: 'Ứng lương (két)',
 };
 
 function Delta({ cur, prev }: { cur: number; prev: number }) {

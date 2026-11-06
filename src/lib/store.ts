@@ -522,17 +522,18 @@ export async function voidOrder(orderId: string, reason: string, approverId: str
 
 // ---------- cash in / out ----------
 
-export async function addCashMove(direction: 'in' | 'out', amount: number, reason: string, note: string | null, photoKey: string | null, approvedBy: string | null) {
+export async function addCashMove(direction: 'in' | 'out', amount: number, reason: string, note: string | null, photoKey: string | null, approvedBy: string | null, forStaffId: string | null = null) {
   const s = getState();
   if (!s.drawer) throw new Error('Chưa mở két');
   const t = Date.now();
   const m: CashMovement = {
     id: ulid(), drawer_session_id: s.drawer.id, business_day: today(), direction, amount, reason, note, photo_key: photoKey,
     purchase_id: null, staff_id: s.staff!.id, approved_by: approvedBy, device_id: s.config!.device.id, created_at: t, updated_at: t,
+    ...(forStaffId ? { for_staff_id: forStaffId } : {}),
   };
   await table<CashMovement>('cash').put(m);
   await outbox.add('cash_movement', m);
-  if (approvedBy) await audit({ actor_id: s.staff!.id, approver_id: approvedBy, action: 'cash_' + direction, entity: 'cash_movement', entity_id: m.id, before_json: null, after_json: JSON.stringify({ amount, reason }), reason: note });
+  if (approvedBy) await audit({ actor_id: s.staff!.id, approver_id: approvedBy, action: 'cash_' + direction, entity: 'cash_movement', entity_id: m.id, before_json: null, after_json: JSON.stringify({ amount, reason, for: forStaffId }), reason: note });
   setState((st) => ({ cashMoves: [m, ...st.cashMoves] }));
   await refreshPending();
   syncKick();

@@ -10,7 +10,7 @@ import { all, auditStmt, batch, body, type Ctx, type Env, first, json, need, now
 const ORDER_COLS = ['id', 'outlet_id', 'device_id', 'short_code', 'business_day', 'staff_id', 'staff_shift_id', 'drawer_session_id', 'order_type', 'customer_label', 'status', 'subtotal', 'promo_total', 'discount_total', 'comp_total', 'tip_total', 'total', 'cost_total', 'stock_applied', 'sent_at', 'paid_at', 'void_reason', 'voided_by', 'approved_by', 'voided_at', 'created_at', 'updated_at', 'table_id', 'guests', 'prebill_at', 'merged_into'];
 const DRAWER_COLS = ['id', 'outlet_id', 'business_day', 'status', 'opened_by', 'opened_at', 'opening_float', 'opening_count_json', 'device_id', 'note', 'created_at', 'updated_at'];
 const SHIFT_COLS = ['id', 'staff_id', 'outlet_id', 'device_id', 'drawer_session_id', 'business_day', 'started_at', 'ended_at', 'created_at', 'updated_at'];
-const CASH_COLS = ['id', 'drawer_session_id', 'business_day', 'direction', 'amount', 'reason', 'note', 'photo_key', 'purchase_id', 'staff_id', 'approved_by', 'device_id', 'created_at', 'updated_at'];
+const CASH_COLS = ['id', 'drawer_session_id', 'business_day', 'direction', 'amount', 'reason', 'note', 'photo_key', 'purchase_id', 'staff_id', 'approved_by', 'device_id', 'for_staff_id', 'created_at', 'updated_at'];
 
 async function outletInfo(env: Env) {
   return (await first<{ id: string; tz_offset_min: number; business_day_cutoff: string }>(env, 'SELECT id,tz_offset_min,business_day_cutoff FROM outlet LIMIT 1'))!;

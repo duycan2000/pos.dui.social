@@ -242,6 +242,8 @@ export interface CashMovement {
   id: string; drawer_session_id: string; business_day: string; direction: 'in' | 'out'; amount: number;
   reason: string; note: string | null; photo_key: string | null; purchase_id: string | null;
   staff_id: string; approved_by: string | null; device_id: string | null; created_at: number; updated_at: number;
+  /** reason 'advance' (ứng lương): who took the money. */
+  for_staff_id?: string | null;
 }
 
 export interface AuditEntry {

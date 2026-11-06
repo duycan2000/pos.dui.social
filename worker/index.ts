@@ -9,6 +9,7 @@ import * as fin from './finance';
 import { type Ctx, type Env, HttpError, json, Router } from './http';
 import * as inv from './inventory';
 import * as time from './time';
+import * as payroll from './payroll';
 import { closeDrawer, getZReport, pull, push } from './sync';
 
 const r = new Router()
@@ -70,6 +71,13 @@ const r = new Router()
   .add('POST', '/api/time/schedule/copy', 'staff', time.copyWeek)
   .add('PUT', '/api/time/schedule/:id', 'staff', time.editShift)
   .add('DELETE', '/api/time/schedule/:id', 'staff', time.deleteShift)
+
+  // payroll (owner)
+  .add('GET', '/api/payroll', 'staff', payroll.getPayroll)
+  .add('POST', '/api/payroll/adjust', 'staff', payroll.addAdjustment)
+  .add('DELETE', '/api/payroll/adjust/:id', 'staff', payroll.deleteAdjustment)
+  .add('POST', '/api/payroll/pay', 'staff', payroll.pay)
+  .add('POST', '/api/payroll/unpay', 'staff', payroll.unpay)
 
   // inventory & recipes
   .add('GET', '/api/inv/ingredients', 'staff', inv.listIngredients)

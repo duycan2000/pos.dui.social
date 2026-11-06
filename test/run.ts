@@ -335,6 +335,37 @@ await test('Low stock: pull lists ingredients under minimum + affected items; su
   assert.equal((await call('POST', '/api/inv/suggest-min', { apply: [{ id: vodkaId, min_stock_base: 1400 }] })).body.saved, 1);
 });
 
+await test('Payroll: hours × rate + night premium + tips, adjustments, till advance, pay freezes and books salary', async () => {
+  const st = (await call('POST', '/api/admin/staff', { name: 'Lương Test', role: 'staff', pin: '135799', hourly_rate: 30000 })).body;
+  const month = '2026-03';
+  // 2 closed shifts of 5h in March (business day from clock-in), one in the night window
+  const day = (d: string, h: number) => Date.UTC(2026, 2, Number(d.slice(8)), h - 7, 0, 0); // local hour h, tz +7
+  for (const [d, h] of [['2026-03-10', 17], ['2026-03-11', 20]] as [string, number][]) {
+    const r = await call('POST', '/api/time/entries', { staff_id: st.id, clock_in: day(d, h), clock_out: day(d, h) + 5 * 3600000, break_min: 0, note: 'test' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+  }
+  assert.equal((await call('POST', '/api/payroll/adjust', { staff_id: st.id, month, kind: 'allowance', amount: 200000, note: 'xăng' })).status, 201);
+  assert.equal((await call('POST', '/api/payroll/adjust', { staff_id: st.id, month, kind: 'advance', amount: 100000 })).status, 201);
+  let p = (await call('GET', `/api/payroll?month=${month}`)).body;
+  let r = p.rows.find((x: any) => x.staff_id === st.id);
+  assert.equal(r.minutes, 600);
+  assert.equal(r.base, 300000);
+  assert.ok(r.night_minutes > 0);
+  assert.equal(r.net, r.base + r.night_pay + r.tips + 200000 - 100000);
+  const pay = await call('POST', '/api/payroll/pay', { staff_id: st.id, month, method: 'bank' });
+  assert.equal(pay.status, 200, JSON.stringify(pay.body));
+  assert.equal((await call('POST', '/api/payroll/adjust', { staff_id: st.id, month, kind: 'bonus', amount: 1000 })).status, 409);
+  p = (await call('GET', `/api/payroll?month=${month}`)).body;
+  r = p.rows.find((x: any) => x.staff_id === st.id);
+  assert.ok(r.paid);
+  const ledger = (await call('GET', '/api/fin/ledger?from=2020-01-01&to=2030-12-31')).body;
+  const rows = ledger.ledger ?? ledger;
+  assert.ok(rows.some((l: any) => l.category === 'salary' && l.amount === r.net && !l.voided));
+  assert.equal((await call('POST', '/api/payroll/unpay', { staff_id: st.id, month })).status, 200);
+  p = (await call('GET', `/api/payroll?month=${month}`)).body;
+  assert.equal(p.rows.find((x: any) => x.staff_id === st.id).paid, null);
+});
+
 await test('Backup: manual run copies every table into R2 and downloads as NDJSON', async () => {
   let r: any, n = 0;
   do { r = (await call('POST', '/api/admin/backups/run', r ? { name: r.body.name } : {})); assert.equal(r.status, 200); n++; } while (!r.body.done && n < 40);

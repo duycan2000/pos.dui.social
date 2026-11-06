@@ -2,6 +2,15 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.29.0 — 07/11/2026
+- Lương tháng (Quản trị › Nhân sự › Lương tháng, chỉ chủ quán): mỗi người = giờ công × lương giờ + phụ cấp ca đêm + tip + phụ cấp/thưởng − ứng lương − khấu trừ.
+  - Tip: "Ai bán người đó", "Chia theo giờ làm" hoặc "Không tính".
+  - Ca quên chấm ra không được tính và phải sửa trước khi trả.
+  - "Trả lương": chốt phiếu lương (không đổi nữa) và ghi khoản chi "Lương" vào sổ thu chi; "Huỷ đã trả" để làm lại.
+  - In phiếu lương ra máy in bill; xuất bảng lương ra Excel (CSV).
+- Thu/chi két: lý do mới "Ứng lương" — chọn người nhận, cần người có quyền duyệt; tự trừ vào lương tháng đó.
+- Migration 0008 (payroll_adjustment, payslip, cash_movement.for_staff_id).
+
 ## 0.28.0 — 07/11/2026
 - Chia bill:
   - Tách theo món: ở bàn (nút "Tách bill"), trên đơn (biểu tượng tách) hoặc ở Thanh toán › Tách theo món. Chọn món (chia được theo số lượng, VD 1 trong 3 bia) → thành đơn riêng cùng bàn. "Tách & thanh toán" trả ngay, "Tách, trả sau" để đó. Khuyến mãi 1+1 tính lại cho từng đơn.
