@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.33.0 — 18/11/2026
+- Đã xoá nút tạm "In thông tin đơn Lazada" khỏi màn Máy in.
+
 ## 0.32.0 — 18/11/2026
 - Tạm thời: Máy in › "In thông tin đơn Lazada (tạm)" — in lại thông tin một đơn mua hàng để dán lên hộp (chữ thường, không logo / mã vạch, ghi rõ là bản in lại của người mua). Sẽ xoá ở bản sau.
 
