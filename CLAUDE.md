@@ -1,5 +1,7 @@
 # Notes for Claude
 
+- Start here when new to the project: HANDOVER.md (architecture, features, conventions, open items).
+
 - UI language: Vietnamese. Docs/code comments: English. Printed guest bill/receipt: English by default, Vietnamese selectable (Cài đặt › Hoá đơn); layout follows the CukCuk-style bill the owner supplied. Bar ticket stays Vietnamese.
 - Every update: bump `version` in package.json (0.x, minor +1 per update until production) and add a CHANGELOG.md entry. The version shows on the login screen via `__APP_VERSION__`.
 - Run `npm test` before pushing. D1 Free limits: ≤100 bound params per query, ≤50 queries per request.

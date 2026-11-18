@@ -2,6 +2,9 @@
 
 Số phiên bản hiện ở màn đăng nhập (và cuối menu ☰). Còn giai đoạn thử nên là 0.x; mỗi lần cập nhật tăng số giữa.
 
+## 0.34.0 — 18/11/2026
+- Thêm HANDOVER.md: tài liệu chuyển giao đầy đủ (kiến trúc, dữ liệu, bảo mật, tính năng, in ấn, Android, cách làm việc, việc còn treo) và checklist chuyển sang tài khoản Claude mới.
+
 ## 0.33.0 — 18/11/2026
 - Đã xoá nút tạm "In thông tin đơn Lazada" khỏi màn Máy in.
 
