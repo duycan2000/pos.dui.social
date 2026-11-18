@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Order } from '../../shared/types';
 import { bleSupported, isSunmi, DEFAULT_PRINTER, kickDrawer, loadPrinter, pairBle, type PrinterSettings as P, printDoc, printerSettings, reconnectWithTap, renderDoc, savePrinter, usePrinterLink } from '../lib/printer';
 import { preBillDoc, qrBillDoc, receiptDoc } from '../lib/receipts';
+import { ORDER_SLIP } from '../lib/orderSlip';
 import { navigate, toast, useStore } from '../lib/store';
 import { Icon, Segmented, Sheet, TopBar } from '../ui';
 
@@ -32,6 +33,15 @@ export default function PrinterSettings() {
         { t: 'text', text: `Khổ ${p.paper}mm · ${cfg.device.name}`, align: 'center', size: 'sm' },
       ]);
       toast('Đã gửi bản in thử');
+    } catch (e) { toast((e as Error).message, true); } finally { setBusy(false); }
+  };
+  // TEMPORARY (owner request 18/11/2026): one-off reprint of a marketplace order's details to tape on the box.
+  // Plain text, no carrier logo or barcode, marked as a buyer reprint. Remove after printing.
+  const orderSlip = async () => {
+    setBusy(true);
+    try {
+      await printDoc(ORDER_SLIP);
+      toast('Đã gửi bản in thông tin đơn');
     } catch (e) { toast((e as Error).message, true); } finally { setBusy(false); }
   };
   const showPreview = async (kind: 'bill' | 'receipt' | 'qr') => {
@@ -127,6 +137,7 @@ export default function PrinterSettings() {
               {p.openDrawer && <button className="btn" disabled={busy} onClick={() => kickDrawer().then(() => toast('Đã mở két')).catch((e) => toast(e.message, true))}>Mở két</button>}
             </div>
             <button className="btn outline" onClick={() => showPreview('bill')}>Xem trước bill mẫu</button>
+            <button className="btn outline" disabled={busy} onClick={orderSlip}><Icon name="printer" size={18} />In thông tin đơn Lazada (tạm)</button>
             <p className="tiny faint" style={{ margin: 0 }}>Hoá đơn được in dạng ảnh nên luôn đúng dấu tiếng Việt, không cần chọn bảng mã.</p>
           </>
         )}
